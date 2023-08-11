@@ -73,6 +73,7 @@
 #include <linux/audit.h>
 #include <linux/security.h>
 #include <asm/shmparam.h>
+#include <linux/arm-smccc.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/io_uring.h>
@@ -97,6 +98,7 @@
 #include "poll.h"
 #include "rw.h"
 #include "alloc_cache.h"
+
 
 #define IORING_MAX_ENTRIES	32768
 #define IORING_MAX_CQ_ENTRIES	(2 * IORING_MAX_ENTRIES)
@@ -3710,7 +3712,7 @@ bool io_is_uring_fops(struct file *file)
 	return file->f_op == &io_uring_fops;
 }
 
-static __cold int io_allocate_scq_urings(struct io_ring_ctx *ctx,
+static __cold int  /* sqes */io_allocate_scq_urings(struct io_ring_ctx *ctx,
 					 struct io_uring_params *p)
 {
 	struct io_rings *rings;
@@ -3812,6 +3814,13 @@ static __cold int io_uring_create(unsigned entries, struct io_uring_params *p,
 	struct io_uring_task *tctx;
 	struct file *file;
 	int ret;
+    struct io_uring_params *p_el3;
+
+    /* CertiKOS + IO_URING */
+    struct arm_smccc_res res;
+    size_t sq_array_offset;
+    size_t size;
+
 
 	if (!entries)
 		return -EINVAL;
@@ -3971,6 +3980,26 @@ static __cold int io_uring_create(unsigned entries, struct io_uring_params *p,
 		goto err;
 	}
 
+    /* CertiKOS + IO_URING */
+    if(ctx->flags & IORING_SETUP_ENCLAVE) {
+        /* TODO arm_smccc_hvc() */
+        printk(KERN_WARNING "ISSUING SMC TO RT-Enclave\n");
+        size = rings_size(ctx, p->sq_entries, p->cq_entries, &sq_array_offset);
+        p_el3 = kmalloc(sizeof(*p_el3), GFP_KERNEL);
+        memcpy(p_el3, p, sizeof(*p_el3));
+        arm_smccc_smc(ARM_SMCCC_REGISTER_IO_URING,
+                (uintptr_t)virt_to_phys(ctx->rings),
+                (uintptr_t)virt_to_phys(ctx->sq_sqes),
+                (uintptr_t)virt_to_phys(p_el3),
+                current->pid,
+                p->resv[0],
+                0,
+                0,
+                &res);
+        kfree(p_el3);
+    }
+
+
 	if (ctx->flags & IORING_SETUP_SINGLE_ISSUER
 	    && !(ctx->flags & IORING_SETUP_R_DISABLED))
 		WRITE_ONCE(ctx->submitter_task, get_task_struct(current));
@@ -4020,7 +4049,7 @@ static long io_uring_setup(u32 entries, struct io_uring_params __user *params)
 	if (copy_from_user(&p, params, sizeof(p)))
 		return -EFAULT;
 	for (i = 0; i < ARRAY_SIZE(p.resv); i++) {
-		if (p.resv[i])
+		if (p.resv[i] && !((p.flags & ~(IORING_SETUP_ENCLAVE)) && i == 0))
 			return -EINVAL;
 	}
 
@@ -4031,7 +4060,8 @@ static long io_uring_setup(u32 entries, struct io_uring_params __user *params)
 			IORING_SETUP_COOP_TASKRUN | IORING_SETUP_TASKRUN_FLAG |
 			IORING_SETUP_SQE128 | IORING_SETUP_CQE32 |
 			IORING_SETUP_SINGLE_ISSUER | IORING_SETUP_DEFER_TASKRUN |
-			IORING_SETUP_NO_MMAP | IORING_SETUP_REGISTERED_FD_ONLY))
+			IORING_SETUP_NO_MMAP | IORING_SETUP_REGISTERED_FD_ONLY |
+            IORING_SETUP_ENCLAVE))
 		return -EINVAL;
 
 	return io_uring_create(entries, &p, params);

@@ -182,6 +182,13 @@
 			   ARM_SMCCC_OWNER_STANDARD,		\
 			   0x53)
 
+
+/* CertiKOS + IO URING */
+#define ARM_SMCCC_REGISTER_IO_URING \
+	ARM_SMCCC_CALL_VAL(ARM_SMCCC_FAST_CALL,			\
+			   ARM_SMCCC_SMC_64,			\
+			   ARM_SMCCC_OWNER_TRUSTED_OS,		\
+			   0x0)
 /*
  * Return codes defined in ARM DEN 0070A
  * ARM DEN 0070A is now merged/consolidated into ARM DEN 0028 C
