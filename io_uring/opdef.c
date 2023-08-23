@@ -33,6 +33,7 @@
 #include "poll.h"
 #include "cancel.h"
 #include "rw.h"
+#include "enclave.h"
 
 static int io_no_issue(struct io_kiocb *req, unsigned int issue_flags)
 {
@@ -428,6 +429,12 @@ const struct io_issue_def io_issue_defs[] = {
 		.prep			= io_eopnotsupp_prep,
 #endif
 	},
+    [IORING_OP_ENCLAVE_MMAP] = {
+		.audit_skip		= 1,
+		.iopoll			= 1,
+		.prep			= io_enclave_mmap_prep,
+		.issue			= io_enclave_mmap,
+    },
 };
 
 
@@ -647,6 +654,9 @@ const struct io_cold_def io_cold_defs[] = {
 		.cleanup		= io_send_zc_cleanup,
 		.fail			= io_sendrecv_fail,
 #endif
+	},
+	[IORING_OP_ENCLAVE_MMAP] = {
+		.name			= "ENCLAVE_MMAP",
 	},
 };
 
