@@ -3983,7 +3983,6 @@ static __cold int io_uring_create(unsigned entries, struct io_uring_params *p,
     /* CertiKOS + IO_URING */
     if(ctx->flags & IORING_SETUP_ENCLAVE) {
         /* TODO arm_smccc_hvc() */
-        printk(KERN_WARNING "ISSUING SMC TO RT-Enclave\n");
         size = rings_size(ctx, p->sq_entries, p->cq_entries, &sq_array_offset);
         p_el3 = kmalloc(sizeof(*p_el3), GFP_KERNEL);
         memcpy(p_el3, p, sizeof(*p_el3));
