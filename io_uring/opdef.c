@@ -435,6 +435,12 @@ const struct io_issue_def io_issue_defs[] = {
 		.prep			= io_enclave_mmap_prep,
 		.issue			= io_enclave_mmap,
     },
+    [IORING_OP_ENCLAVE_SPAWN] = {
+		.audit_skip		= 1,
+		.iopoll			= 1,
+		.prep			= io_enclave_spawn_prep,
+		.issue			= io_enclave_spawn,
+    },
 };
 
 
@@ -657,6 +663,9 @@ const struct io_cold_def io_cold_defs[] = {
 	},
 	[IORING_OP_ENCLAVE_MMAP] = {
 		.name			= "ENCLAVE_MMAP",
+	},
+	[IORING_OP_ENCLAVE_SPAWN] = {
+		.name			= "ENCLAVE_SPAWN",
 	},
 };
 

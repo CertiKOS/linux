@@ -3986,7 +3986,7 @@ static __cold int io_uring_create(unsigned entries, struct io_uring_params *p,
         size = rings_size(ctx, p->sq_entries, p->cq_entries, &sq_array_offset);
         p_el3 = kmalloc(sizeof(*p_el3), GFP_KERNEL);
         memcpy(p_el3, p, sizeof(*p_el3));
-        arm_smccc_smc(ARM_SMCCC_REGISTER_IO_URING,
+        arm_smccc_smc(ARM_SMCCC_REG_RINGLEADER_IO_URING,
                 (uintptr_t)virt_to_phys(ctx->rings),
                 (uintptr_t)virt_to_phys(ctx->sq_sqes),
                 (uintptr_t)virt_to_phys(p_el3),
