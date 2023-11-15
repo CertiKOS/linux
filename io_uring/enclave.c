@@ -56,6 +56,7 @@ static int io_enclave_mmap_internal(
     int ret = remap_pfn_range(vma, vma->vm_start, pfn, len, vma->vm_page_prot);
 
     //TODO check res return value
+    //TODO derive eid from some saved state, or pass proxy pid to reg calls
     struct arm_smccc_res res;
     arm_smccc_smc(ARM_SMCCC_REG_RINGLEADER_SHMEM,
             (uintptr_t)virt_to_phys(kva),

@@ -4047,9 +4047,12 @@ static long io_uring_setup(u32 entries, struct io_uring_params __user *params)
 
 	if (copy_from_user(&p, params, sizeof(p)))
 		return -EFAULT;
-	for (i = 0; i < ARRAY_SIZE(p.resv); i++) {
-		if (p.resv[i] && !((p.flags & ~(IORING_SETUP_ENCLAVE)) && i == 0))
-			return -EINVAL;
+
+	if((p.flags & IORING_SETUP_ENCLAVE) == 0) {
+		for (i = 0; i < ARRAY_SIZE(p.resv); i++) {
+			if (p.resv[i])
+				return -EINVAL;
+		}
 	}
 
 	if (p.flags & ~(IORING_SETUP_IOPOLL | IORING_SETUP_SQPOLL |
