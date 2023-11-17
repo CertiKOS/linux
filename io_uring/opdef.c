@@ -431,15 +431,31 @@ const struct io_issue_def io_issue_defs[] = {
 	},
 	[IORING_OP_ENCLAVE_MMAP] = {
 		.audit_skip		= 1,
-		.iopoll			= 1,
 		.prep			= io_enclave_mmap_prep,
 		.issue			= io_enclave_mmap,
 	},
 	[IORING_OP_ENCLAVE_SPAWN] = {
 		.audit_skip		= 1,
-		.iopoll			= 1,
 		.prep			= io_enclave_spawn_prep,
 		.issue			= io_enclave_spawn,
+	},
+	[IORING_OP_BIND] = {
+		.needs_file		= 1,
+#if defined(CONFIG_NET)
+		.prep			= io_bind_prep,
+		.issue			= io_bind,
+#else
+		.prep			= io_eopnotsupp_prep,
+#endif
+	},
+	[IORING_OP_LISTEN] = {
+		.needs_file		= 1,
+#if defined(CONFIG_NET)
+		.prep			= io_listen_prep,
+		.issue			= io_listen,
+#else
+		.prep			= io_eopnotsupp_prep,
+#endif
 	},
 };
 
@@ -666,6 +682,12 @@ const struct io_cold_def io_cold_defs[] = {
 	},
 	[IORING_OP_ENCLAVE_SPAWN] = {
 		.name			= "ENCLAVE_SPAWN",
+	},
+	[IORING_OP_LISTEN] = {
+		.name			= "LISTEN",
+	},
+	[IORING_OP_BIND] = {
+		.name			= "BIND",
 	},
 };
 

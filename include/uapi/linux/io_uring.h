@@ -243,6 +243,8 @@ enum io_uring_op {
 	IORING_OP_SENDMSG_ZC,
 	IORING_OP_ENCLAVE_MMAP,
 	IORING_OP_ENCLAVE_SPAWN,
+	IORING_OP_BIND,
+	IORING_OP_LISTEN,
 
 	/* this goes last, obviously */
 	IORING_OP_LAST,

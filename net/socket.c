@@ -1767,6 +1767,30 @@ SYSCALL_DEFINE4(socketpair, int, family, int, type, int, protocol,
 	return __sys_socketpair(family, type, protocol, usockvec);
 }
 
+
+int __sys_bind_file(struct file *file, struct sockaddr_storage *address,
+		int addrlen)
+{
+	int err = -ENOTSOCK;
+	struct socket *sock;
+
+	sock = sock_from_file(file);
+	if (!sock) {
+		goto out;
+	}
+
+	err = security_socket_bind(sock,
+				   (struct sockaddr *)address,
+				   addrlen);
+	if (!err)
+		err = sock->ops->bind(sock,
+				      (struct sockaddr *)
+				      address, addrlen);
+
+out:
+	return err;
+}
+
 /*
  *	Bind a name to a socket. Nothing much to do here since it's
  *	the protocol's responsibility to handle the local address.
@@ -1777,30 +1801,50 @@ SYSCALL_DEFINE4(socketpair, int, family, int, type, int, protocol,
 
 int __sys_bind(int fd, struct sockaddr __user *umyaddr, int addrlen)
 {
+	int ret = -EBADF;
+	int fput_needed;
 	struct socket *sock;
 	struct sockaddr_storage address;
-	int err, fput_needed;
 
-	sock = sockfd_lookup_light(fd, &err, &fput_needed);
-	if (sock) {
-		err = move_addr_to_kernel(umyaddr, addrlen, &address);
-		if (!err) {
-			err = security_socket_bind(sock,
-						   (struct sockaddr *)&address,
-						   addrlen);
-			if (!err)
-				err = sock->ops->bind(sock,
-						      (struct sockaddr *)
-						      &address, addrlen);
-		}
+	sock = sockfd_lookup_light(fd, &ret, &fput_needed);
+	if(sock) {
+		ret = move_addr_to_kernel(umyaddr, addrlen, &address);
+		if (!ret)
+			ret = __sys_bind_file(sock->file, &address, addrlen);
 		fput_light(sock->file, fput_needed);
 	}
-	return err;
+
+	return ret;
 }
 
 SYSCALL_DEFINE3(bind, int, fd, struct sockaddr __user *, umyaddr, int, addrlen)
 {
 	return __sys_bind(fd, umyaddr, addrlen);
+}
+
+
+int __sys_listen_file(struct file * file, int backlog)
+{
+	int err = -ENOTSOCK;
+	int somaxconn;
+	struct socket *sock;
+
+	sock = sock_from_file(file);
+	if (!sock) {
+		goto out;
+	}
+
+	somaxconn = READ_ONCE(sock_net(sock->sk)->core.sysctl_somaxconn);
+	if ((unsigned int)backlog > somaxconn)
+		backlog = somaxconn;
+
+	err = security_socket_listen(sock, backlog);
+	if (!err)
+		err = sock->ops->listen(sock, backlog);
+
+out:
+	return err;
+
 }
 
 /*
@@ -1813,18 +1857,10 @@ int __sys_listen(int fd, int backlog)
 {
 	struct socket *sock;
 	int err, fput_needed;
-	int somaxconn;
 
 	sock = sockfd_lookup_light(fd, &err, &fput_needed);
 	if (sock) {
-		somaxconn = READ_ONCE(sock_net(sock->sk)->core.sysctl_somaxconn);
-		if ((unsigned int)backlog > somaxconn)
-			backlog = somaxconn;
-
-		err = security_socket_listen(sock, backlog);
-		if (!err)
-			err = sock->ops->listen(sock, backlog);
-
+		err = __sys_listen_file(sock->file, backlog);
 		fput_light(sock->file, fput_needed);
 	}
 	return err;
