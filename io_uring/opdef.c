@@ -34,6 +34,7 @@
 #include "cancel.h"
 #include "rw.h"
 #include "enclave.h"
+#include "fcntl.h"
 
 static int io_no_issue(struct io_kiocb *req, unsigned int issue_flags)
 {
@@ -457,6 +458,11 @@ const struct io_issue_def io_issue_defs[] = {
 		.prep			= io_eopnotsupp_prep,
 #endif
 	},
+	[IORING_OP_FCNTL] = {
+		.needs_file		= 1,
+		.prep			= io_fcntl_prep,
+		.issue			= io_fcntl,
+	},
 };
 
 
@@ -688,6 +694,9 @@ const struct io_cold_def io_cold_defs[] = {
 	},
 	[IORING_OP_BIND] = {
 		.name			= "BIND",
+	},
+	[IORING_OP_FCNTL] = {
+		.name			= "FCNTL",
 	},
 };
 

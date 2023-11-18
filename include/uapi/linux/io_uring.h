@@ -245,6 +245,7 @@ enum io_uring_op {
 	IORING_OP_ENCLAVE_SPAWN,
 	IORING_OP_BIND,
 	IORING_OP_LISTEN,
+	IORING_OP_FCNTL,
 
 	/* this goes last, obviously */
 	IORING_OP_LAST,
