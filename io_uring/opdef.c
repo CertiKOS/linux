@@ -35,6 +35,9 @@
 #include "rw.h"
 #include "enclave.h"
 #include "fcntl.h"
+#include "getpid.h"
+#include "clone.h"
+#include "exec.h"
 
 static int io_no_issue(struct io_kiocb *req, unsigned int issue_flags)
 {
@@ -463,6 +466,22 @@ const struct io_issue_def io_issue_defs[] = {
 		.prep			= io_fcntl_prep,
 		.issue			= io_fcntl,
 	},
+	[IORING_OP_GETPID] = {
+		.prep			= io_getpid_prep,
+		.issue			= io_getpid,
+	},
+	[IORING_OP_GETPPID] = {
+		.prep			= io_getppid_prep,
+		.issue			= io_getppid,
+	},
+	[IORING_OP_CLONE3] = {
+		.prep			= io_clone3_prep,
+		.issue			= io_clone3,
+	},
+	[IORING_OP_EXECVEAT] = {
+		.prep			= io_execveat_prep,
+		.issue			= io_execveat,
+	},
 };
 
 
@@ -697,6 +716,18 @@ const struct io_cold_def io_cold_defs[] = {
 	},
 	[IORING_OP_FCNTL] = {
 		.name			= "FCNTL",
+	},
+	[IORING_OP_GETPPID] = {
+		.name			= "GETPPID",
+	},
+	[IORING_OP_GETPID] = {
+		.name			= "GETPID",
+	},
+	[IORING_OP_CLONE3] = {
+		.name			= "CLONE3",
+	},
+	[IORING_OP_EXECVEAT] = {
+		.name			= "EXECVEAT"
 	},
 };
 

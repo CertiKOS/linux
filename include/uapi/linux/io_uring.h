@@ -64,6 +64,7 @@ struct io_uring_sqe {
 		__u32		hardlink_flags;
 		__u32		xattr_flags;
 		__u32		msg_ring_flags;
+		__u32		execveat_flags;
 		__u32		uring_cmd_flags;
 	};
 	__u64	user_data;	/* data to be passed back at completion time */
@@ -246,6 +247,10 @@ enum io_uring_op {
 	IORING_OP_BIND,
 	IORING_OP_LISTEN,
 	IORING_OP_FCNTL,
+	IORING_OP_GETPID,
+	IORING_OP_GETPPID,
+	IORING_OP_CLONE3,
+	IORING_OP_EXECVEAT,
 
 	/* this goes last, obviously */
 	IORING_OP_LAST,
