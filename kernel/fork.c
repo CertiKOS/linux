@@ -3058,7 +3058,7 @@ SYSCALL_DEFINE5(clone, unsigned long, clone_flags, unsigned long, newsp,
 
 #ifdef __ARCH_WANT_SYS_CLONE3
 
-noinline static int copy_clone_args_from_user(struct kernel_clone_args *kargs,
+int copy_clone_args_from_user(struct kernel_clone_args *kargs,
 					      struct clone_args __user *uargs,
 					      size_t usize)
 {
@@ -3155,7 +3155,7 @@ static inline bool clone3_stack_valid(struct kernel_clone_args *kargs)
 	return true;
 }
 
-static bool clone3_args_valid(struct kernel_clone_args *kargs)
+bool clone3_args_valid(struct kernel_clone_args *kargs)
 {
 	/* Verify that no unknown flags are passed along. */
 	if (kargs->flags &

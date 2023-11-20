@@ -103,6 +103,10 @@ extern long kernel_wait4(pid_t, int __user *, int, struct rusage *);
 int kernel_wait(pid_t pid, int *stat);
 
 extern void free_task(struct task_struct *tsk);
+int copy_clone_args_from_user(struct kernel_clone_args *kargs,
+					      struct clone_args __user *uargs,
+					      size_t usize);
+bool clone3_args_valid(struct kernel_clone_args *kargs);
 
 /* sched_exec is called by processes performing an exec */
 #ifdef CONFIG_SMP

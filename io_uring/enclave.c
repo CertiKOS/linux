@@ -92,7 +92,6 @@ int io_enclave_mmap_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
     return 0;
 }
 
-//void* previous_enclave_mmap_kva =  NULL;
 
 int io_enclave_mmap(struct io_kiocb *req, unsigned int issue_flags)
 {
