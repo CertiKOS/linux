@@ -769,7 +769,7 @@ static int ioctl_fssetxattr(struct file *file, void __user *argp)
  * When you add any new common ioctls to the switches above and below,
  * please ensure they have compatible arguments in compat mode.
  */
-static int do_vfs_ioctl(struct file *filp, unsigned int fd,
+int do_vfs_ioctl(struct file *filp, unsigned int fd,
 			unsigned int cmd, unsigned long arg)
 {
 	void __user *argp = (void __user *)arg;
@@ -852,6 +852,7 @@ static int do_vfs_ioctl(struct file *filp, unsigned int fd,
 
 	return -ENOIOCTLCMD;
 }
+EXPORT_SYMBOL(do_vfs_ioctl);
 
 SYSCALL_DEFINE3(ioctl, unsigned int, fd, unsigned int, cmd, unsigned long, arg)
 {

@@ -60,3 +60,46 @@ out:
 	fdput(f);
 	return IOU_OK;
 }
+
+
+
+int io_ioctl_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
+{
+	struct io_fcntl *ioctl_data = io_kiocb_to_cmd(req, struct io_fcntl);
+
+	/* put len in addr2, don't accept fixed buffers */
+	if (sqe->addr || sqe->buf_index || sqe->rw_flags || sqe->splice_fd_in)
+		return -EINVAL;
+
+	ioctl_data->fd = sqe->fd;
+	ioctl_data->cmd = sqe->len;
+	ioctl_data->arg = sqe->off;
+
+	return 0;
+}
+
+int io_ioctl(struct io_kiocb *req, unsigned int issue_flags)
+{
+	int ret = -EBADF;
+	struct io_fcntl *ioctl_data = io_kiocb_to_cmd(req, struct io_fcntl);
+	struct fd f = fdget(ioctl_data->fd);
+
+	if(!f.file || f.file != req->file)
+		goto out;
+
+	ret = security_file_ioctl(f.file, ioctl_data->cmd, ioctl_data->arg);
+	if (ret)
+		goto out;
+
+	ret = do_vfs_ioctl(f.file, ioctl_data->fd, ioctl_data->cmd,
+			ioctl_data->arg);
+	if (ret == -ENOIOCTLCMD)
+		ret = vfs_ioctl(f.file, ioctl_data->cmd, ioctl_data->arg);
+
+out:
+	if (ret < 0)
+		req_set_fail(req);
+	io_req_set_res(req, ret, 0);
+	fdput(f);
+	return IOU_OK;
+}

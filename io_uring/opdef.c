@@ -466,6 +466,11 @@ const struct io_issue_def io_issue_defs[] = {
 		.prep			= io_fcntl_prep,
 		.issue			= io_fcntl,
 	},
+	[IORING_OP_IOCTL] = {
+		.needs_file		= 1,
+		.prep			= io_ioctl_prep,
+		.issue			= io_ioctl,
+	},
 	[IORING_OP_GETPID] = {
 		.prep			= io_getpid_prep,
 		.issue			= io_getpid,
@@ -716,6 +721,9 @@ const struct io_cold_def io_cold_defs[] = {
 	},
 	[IORING_OP_FCNTL] = {
 		.name			= "FCNTL",
+	},
+	[IORING_OP_IOCTL] = {
+		.name			= "IOCTL",
 	},
 	[IORING_OP_GETPPID] = {
 		.name			= "GETPPID",
