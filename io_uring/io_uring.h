@@ -87,6 +87,9 @@ bool __io_alloc_req_refill(struct io_ring_ctx *ctx);
 bool io_match_task_safe(struct io_kiocb *head, struct task_struct *task,
 			bool cancel_all);
 
+
+unsigned long io_rings_size(struct io_ring_ctx *ctx, size_t *sq_offset);
+
 #define io_lockdep_assert_cq_locked(ctx)				\
 	do {								\
 		lockdep_assert(in_task());				\

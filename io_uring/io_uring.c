@@ -2780,6 +2780,11 @@ static unsigned long rings_size(struct io_ring_ctx *ctx, unsigned int sq_entries
 	return off;
 }
 
+unsigned long io_rings_size(struct io_ring_ctx *ctx, size_t *sq_offset)
+{
+	return rings_size(ctx, ctx->sq_entries, ctx->cq_entries, sq_offset);
+}
+
 static int io_eventfd_register(struct io_ring_ctx *ctx, void __user *arg,
 			       unsigned int eventfd_async)
 {

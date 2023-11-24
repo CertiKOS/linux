@@ -27,9 +27,9 @@ int io_fcntl_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 	if (sqe->addr || sqe->buf_index || sqe->rw_flags || sqe->splice_fd_in)
 		return -EINVAL;
 
-	fcntl_data->fd = sqe->fd;
-	fcntl_data->cmd = sqe->len;
-	fcntl_data->arg = sqe->off;
+	fcntl_data->fd = READ_ONCE(sqe->fd);
+	fcntl_data->cmd = READ_ONCE(sqe->len);
+	fcntl_data->arg = READ_ONCE(sqe->off);
 
 	return 0;
 }
@@ -71,9 +71,9 @@ int io_ioctl_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 	if (sqe->addr || sqe->buf_index || sqe->rw_flags || sqe->splice_fd_in)
 		return -EINVAL;
 
-	ioctl_data->fd = sqe->fd;
-	ioctl_data->cmd = sqe->len;
-	ioctl_data->arg = sqe->off;
+	ioctl_data->fd = READ_ONCE(sqe->fd);
+	ioctl_data->cmd = READ_ONCE(sqe->len);
+	ioctl_data->arg = READ_ONCE(sqe->off);
 
 	return 0;
 }
