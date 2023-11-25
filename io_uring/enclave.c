@@ -8,6 +8,7 @@
 #include <linux/mman.h>
 #include <linux/anon_inodes.h>
 #include <asm-generic/mman-common.h>
+#include <linux/mm_types.h>
 
 #include <uapi/linux/io_uring.h>
 #include <uapi/certikos/spawn.h>
@@ -15,12 +16,21 @@
 #include "io_uring.h"
 #include "enclave.h"
 
+extern long populate_vma_page_range(struct vm_area_struct *vma,
+    unsigned long start, unsigned long end, int *locked);
+extern int faultin_page(struct vm_area_struct *vma,
+unsigned long address, unsigned int *flags, bool unshare,
+int *locked);
+
+
 struct io_enclave_mmap
 {
     struct file * file;
     size_t size;
     int eid;
     uint64_t user_data;
+    uintptr_t *phys_addr_array;
+    struct page ** pages;
 };
 
 
@@ -35,6 +45,9 @@ static int io_enclave_release(
         struct inode *inode,
         struct file *file)
 {
+    struct io_enclave_mmap * enclave_mmap = file->private_data;
+    printk(KERN_WARNING "release mmap %lu\n", enclave_mmap->size);
+    //TODO kfree
     return 0;
 }
 
@@ -42,32 +55,68 @@ static int io_enclave_mmap_internal(
         struct file *file,
         struct vm_area_struct *vma)
 {
+    int res;
     struct io_enclave_mmap * enclave_mmap = file->private_data;
-
     size_t len = vma->vm_end - vma->vm_start;
-    gfp_t gfp = GFP_KERNEL_ACCOUNT | __GFP_ZERO | __GFP_NOWARN | __GFP_COMP;
-    void * kva = (void *)__get_free_pages(gfp, get_order(len));
-    if(!kva)
+    unsigned long n_pages = len >> PAGE_SHIFT;
+    vm_flags_set(vma, VM_MIXEDMAP | VM_DONTEXPAND);
+
+    //printk("vm_flags=%lx\n", vma->vm_flags);
+    //printk("vm_ops=%lx\n", (uintptr_t)(vma->vm_ops));
+
+    struct page ** page_array =
+        kmalloc_array(n_pages, sizeof(struct page *), GFP_KERNEL | __GFP_ZERO);
+    if(!page_array)
     {
-        printk(KERN_WARNING "NO MEMORY LEFT! Get free pages failed.\n");
+        printk(KERN_WARNING "page_array kmalloc failed.\n");
         return -ENOMEM;
     }
 
-    unsigned long pfn = (uintptr_t)virt_to_phys(kva) >> PAGE_SHIFT;
-    int ret = remap_pfn_range(vma, vma->vm_start, pfn, len, vma->vm_page_prot);
+    uintptr_t * phys_addr_array =
+        kmalloc_array(n_pages, sizeof(uintptr_t), GFP_KERNEL);
+    if(!phys_addr_array)
+    {
+        printk(KERN_WARNING "phys_addr_array kmalloc failed.\n");
+        kfree(page_array);
+        return -ENOMEM;
+    }
 
-    //TODO check res return value
-    //TODO derive eid from some saved state, or pass proxy pid to reg calls
-    struct arm_smccc_res res;
+    enclave_mmap->phys_addr_array = phys_addr_array;
+    enclave_mmap->pages = page_array;
+
+    unsigned long bulk_res = alloc_pages_bulk_array(
+            GFP_KERNEL_ACCOUNT | __GFP_ZERO | __GFP_NOWARN | __GFP_COMP,
+            n_pages, page_array);
+    if(bulk_res != n_pages)
+    {
+        printk("bulk alloc 0x%lx/0x%lx pages\n", bulk_res, n_pages);
+        return -ENOMEM;
+    }
+
+
+    res = vm_insert_pages(vma, vma->vm_start, page_array, &bulk_res);
+    if(res || bulk_res != 0)
+    {
+        printk("didn't inserted %lx pages (%i)\n", bulk_res, res);
+        return -EFAULT;
+    }
+
+    for(unsigned long i = 0; i < n_pages; i++)
+    {
+        //printk("page %lx -> %llx\n", (uintptr_t)page_array[i], page_to_phys(page_array[i]));
+        phys_addr_array[i] = page_to_phys(page_array[i]);
+    }
+
+    struct arm_smccc_res smc_res;
     arm_smccc_smc(ARM_SMCCC_REG_RINGLEADER_SHMEM,
-            (uintptr_t)virt_to_phys(kva),
+            virt_to_phys(phys_addr_array),
             (uintptr_t)vma->vm_start,
             len,
             enclave_mmap->eid,
             enclave_mmap->user_data,
-            0, 0, &res);
+            0, 0, &smc_res);
 
-    return ret;
+    return 0;
 }
 
 
@@ -128,7 +177,7 @@ int io_enclave_mmap(struct io_kiocb *req, unsigned int issue_flags)
     unsigned long populate = 0;
     uva = do_mmap(file, 0, len,
         PROT_READ | PROT_WRITE,
-        MAP_LOCKED | MAP_SHARED | MAP_POPULATE,
+        MAP_LOCKED | MAP_SHARED | MAP_POPULATE | MAP_ANONYMOUS,
         0, /* offset */
         &populate,
         NULL);
