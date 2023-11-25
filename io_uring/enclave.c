@@ -16,13 +16,6 @@
 #include "io_uring.h"
 #include "enclave.h"
 
-extern long populate_vma_page_range(struct vm_area_struct *vma,
-    unsigned long start, unsigned long end, int *locked);
-extern int faultin_page(struct vm_area_struct *vma,
-unsigned long address, unsigned int *flags, bool unshare,
-int *locked);
-
-
 struct io_enclave_mmap
 {
     struct file * file;
@@ -38,6 +31,11 @@ struct io_enclave_spawn
 {
     struct sys_spawn_param_t *kparams;
     struct io_uring_params * k_io_params;
+    char *bin_name;
+    char **argv;
+    char **envp;
+    char *argv_strs;
+    char *envp_strs;
 };
 
 
@@ -47,7 +45,8 @@ static int io_enclave_release(
 {
     struct io_enclave_mmap * enclave_mmap = file->private_data;
     printk(KERN_WARNING "release mmap %lu\n", enclave_mmap->size);
-    //TODO kfree
+    kfree(enclave_mmap->phys_addr_array);
+    kfree(enclave_mmap->pages);
     return 0;
 }
 
@@ -215,7 +214,74 @@ static size_t argv_envp_count(const char __user * const __user * argv,
         *total += round_up(strnlen_user(argv_ptr, elem_max) + 1, 8);
     }
 
-    return argv_size;
+    return argv_size + 1;
+}
+
+
+static int phys_array_of_user_str_array(
+        const char __user * const __user * uarr,
+        size_t arr_max,
+        size_t elem_max,
+        char *** arr_out,
+        char ** arr_strs_out)
+{
+    size_t total;
+    size_t arr_size = argv_envp_count(
+            (const char __user * const __user*)uarr,
+            arr_max,
+            elem_max,
+            &total);
+
+    char ** arr = kmalloc_array(arr_size, sizeof(char*), GFP_KERNEL);
+    char * arr_strs = kmalloc(total, GFP_KERNEL);
+    char * arr_strs_head = arr_strs;
+
+    if(!arr || !arr_strs)
+    {
+        printk("Failed to kmalloc space for argv/envp\n");
+        return -ENOMEM;
+    }
+
+    if(copy_from_user(arr, uarr, arr_size * sizeof(char*)))
+    {
+        printk("Failed to copy argv/envp from user\n");
+        kfree(arr);
+        kfree(arr_strs);
+        return -EFAULT;
+    }
+
+    for(size_t i = 0; i < arr_size; i++)
+    {
+        if(arr[i] == NULL)
+            continue;
+
+        size_t sz = strnlen_user(arr[i], elem_max);
+
+        if((uintptr_t)arr_strs_head - (uintptr_t)arr_strs + sz > total)
+        {
+            printk("Overflow of argv/envp strs\n");
+            kfree(arr);
+            kfree(arr_strs);
+            return -EFAULT;
+        }
+
+        size_t copied = strncpy_from_user(arr_strs_head, arr[i], sz);
+        if(copied + 1 != sz)
+        {
+            printk("strncopy fault %lx != %lx\n", copied + 1, sz);
+            kfree(arr);
+            kfree(arr_strs);
+            return -EFAULT;
+        }
+        arr_strs_head[copied] = '\0';
+
+        arr[i] = (void*)virt_to_phys(arr_strs_head);
+        arr_strs_head += sz;
+    }
+
+    *arr_out = arr;
+    *arr_strs_out = arr_strs;
+    return arr_size;
 }
 
 
@@ -223,10 +289,12 @@ int io_enclave_spawn_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 {
     int ret = 0;
     struct io_enclave_spawn * enclave_spawn;
-    size_t name_size, argv_size, envp_size, argv_total, envp_total;
+    size_t name_size, argv_size, envp_size;
     char * bin_name = NULL;
     char **argv = NULL;
     char **envp = NULL;
+    char *argv_strs = NULL;
+    char *envp_strs = NULL;
     struct sys_spawn_param_t __user *p;
     struct io_uring_params __user * io_params = (void *)READ_ONCE(sqe->addr2);
 
@@ -241,55 +309,63 @@ int io_enclave_spawn_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
     enclave_spawn->kparams =
         kmalloc(sizeof(*enclave_spawn->kparams), GFP_KERNEL);
     if(!enclave_spawn->kparams) {
+        printk("Failed to allocate memory for bin_name\n");
         ret = -ENOMEM;
         goto out;
     }
 
     p = (void *)READ_ONCE(sqe->addr);
     if(copy_from_user(enclave_spawn->kparams, p, sizeof(*p))) {
+        printk("Failed to allocate memory for bin_name\n");
         ret = -EFAULT;
         goto out1;
     }
 
-
     name_size = strnlen_user(enclave_spawn->kparams->bin_name,
             ENCLAVE_BIN_NAME_MAX_LEN);
-    argv_size = argv_envp_count(
-            (const char __user * const __user*)enclave_spawn->kparams->argv,
-            ENCLAVE_ARGV_MAX_LEN,
-            ENCLAVE_ARGV_ELEM_MAX_LEN,
-            &argv_total);
-    envp_size = argv_envp_count(
-            (const char __user * const __user*)enclave_spawn->kparams->envp,
-            ENCLAVE_ENVP_MAX_LEN,
-            ENCLAVE_ENVP_ELEM_MAX_LEN,
-            &envp_total);
 
     bin_name = kmalloc(name_size, GFP_KERNEL);
-    argv = kmalloc(argv_size * sizeof(char*), GFP_KERNEL);
-    envp = kmalloc(envp_size * sizeof(char*), GFP_KERNEL);
-
-
-    if(!bin_name || !argv || !envp) {
+    if(!bin_name) {
+        printk("Failed to allocate memory for bin_name\n");
         ret = -ENOMEM;
-        goto out2;
+        goto out1;
     }
 
-    if(copy_from_user(bin_name, enclave_spawn->kparams->bin_name, name_size) ||
-       copy_from_user(argv,     enclave_spawn->kparams->argv, argv_size * sizeof(char*)) ||
-       copy_from_user(envp,     enclave_spawn->kparams->envp, envp_size * sizeof(char*)))
+    if(copy_from_user(bin_name, enclave_spawn->kparams->bin_name, name_size))
     {
         ret = -EFAULT;
         goto out2;
     }
 
-    //TODO copy args
+    ret = phys_array_of_user_str_array(
+        (const char __user * const __user *)enclave_spawn->kparams->argv,
+        ENCLAVE_ARGV_MAX_LEN,
+        ENCLAVE_ARGV_ELEM_MAX_LEN,
+        &argv,
+        &argv_strs);
+    if(ret < 0)
+    {
+        goto out2;
+    }
+    argv_size = ret;
 
+    ret = phys_array_of_user_str_array(
+        (const char __user * const __user *)enclave_spawn->kparams->envp,
+        ENCLAVE_ENVP_MAX_LEN,
+        ENCLAVE_ENVP_ELEM_MAX_LEN,
+        &envp,
+        &envp_strs);
+    if(ret < 0)
+    {
+        goto out2;
+    }
+    envp_size = ret;
 
     enclave_spawn->k_io_params =
         kmalloc(sizeof(*enclave_spawn->k_io_params), GFP_KERNEL);
     if(!enclave_spawn->k_io_params)
     {
+        printk("Failed to allocate memory for bin_name\n");
         ret = -ENOMEM;
         goto out2;
     }
@@ -308,13 +384,23 @@ int io_enclave_spawn_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
     enclave_spawn->kparams->bin_name    = (void *)virt_to_phys(bin_name);
     enclave_spawn->kparams->argv        = (void *)virt_to_phys(argv);
     enclave_spawn->kparams->envp        = (void *)virt_to_phys(envp);
+    enclave_spawn->kparams->argv_size   = argv_size;
+    enclave_spawn->kparams->envp_size   = envp_size;
 
-    return ret;
+    enclave_spawn->bin_name = bin_name;
+    enclave_spawn->argv = argv;
+    enclave_spawn->envp = envp;
+    enclave_spawn->argv_strs = argv_strs;
+    enclave_spawn->envp_strs = envp_strs;
+
+    return 0;
 out3:
     kfree(enclave_spawn->k_io_params);
 out2:
     kfree(envp);
     kfree(argv);
+    kfree(envp_strs);
+    kfree(argv_strs);
     kfree(bin_name);
 out1:
     kfree(enclave_spawn->kparams);
@@ -345,10 +431,11 @@ int io_enclave_spawn(struct io_kiocb *req, unsigned int issue_flags)
     }
 
     //TODO free original kernel pointers
-    //kfree(enclave_spawn->kparams->bin_name);
-    //kfree(enclave_spawn->kparams->argv);
-    //kfree(enclave_spawn->kparams->envp);
-    //kfree(enclave_spawn->kparams);
+    kfree(enclave_spawn->bin_name);
+    kfree(enclave_spawn->argv);
+    kfree(enclave_spawn->envp);
+    kfree(enclave_spawn->argv_strs);
+    kfree(enclave_spawn->envp_strs);
 
     io_req_set_res(req, 0, 0);
     return IOU_OK;
