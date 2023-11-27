@@ -202,14 +202,8 @@ SYSCALL_DEFINE3(old_readdir, unsigned int, fd,
 
 /*
  * New, all-improved, singing, dancing, iBCS2-compliant getdents()
- * interface. 
+ * interface.
  */
-struct linux_dirent {
-	unsigned long	d_ino;
-	unsigned long	d_off;
-	unsigned short	d_reclen;
-	char		d_name[];
-};
 
 struct getdents_callback {
 	struct dir_context ctx;
@@ -219,7 +213,7 @@ struct getdents_callback {
 	int error;
 };
 
-static bool filldir(struct dir_context *ctx, const char *name, int namlen,
+bool filldir(struct dir_context *ctx, const char *name, int namlen,
 		   loff_t offset, u64 ino, unsigned int d_type)
 {
 	struct linux_dirent __user *dirent, *prev;

@@ -38,6 +38,7 @@
 #include "getpid.h"
 #include "clone.h"
 #include "exec.h"
+#include "getdents.h"
 
 static int io_no_issue(struct io_kiocb *req, unsigned int issue_flags)
 {
@@ -485,6 +486,11 @@ const struct io_issue_def io_issue_defs[] = {
 		.prep			= io_execveat_prep,
 		.issue			= io_execveat,
 	},
+	[IORING_OP_GETDENTS] = {
+		.needs_file		= 1,
+		.prep			= io_getdents_prep,
+		.issue			= io_getdents,
+	},
 };
 
 
@@ -733,6 +739,9 @@ const struct io_cold_def io_cold_defs[] = {
 		.name			= "CLONE3",
 	},
 	[IORING_OP_EXECVEAT] = {
+		.name			= "EXECVEAT"
+	},
+	[IORING_OP_GETDENTS] = {
 		.name			= "EXECVEAT"
 	},
 };

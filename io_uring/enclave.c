@@ -377,8 +377,8 @@ int io_enclave_spawn_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
         goto out3;
     }
 
-    printk("name:%s (%zu), argv_size=%zu, envp_size=%zu\n",
-            bin_name, name_size, argv_size, envp_size);
+    //printk("name:%s (%zu), argv_size=%zu, envp_size=%zu\n",
+    //        bin_name, name_size, argv_size, envp_size);
 
 
     enclave_spawn->kparams->bin_name    = (void *)virt_to_phys(bin_name);

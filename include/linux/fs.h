@@ -2894,6 +2894,15 @@ const char *simple_get_link(struct dentry *, struct inode *,
 extern const struct inode_operations simple_symlink_inode_operations;
 
 extern int iterate_dir(struct file *, struct dir_context *);
+struct linux_dirent {
+	unsigned long	d_ino;
+	unsigned long	d_off;
+	unsigned short	d_reclen;
+	char		d_name[];
+};
+
+bool filldir(struct dir_context *ctx, const char *name, int namlen,
+		   loff_t offset, u64 ino, unsigned int d_type);
 
 int vfs_fstatat(int dfd, const char __user *filename, struct kstat *stat,
 		int flags);
