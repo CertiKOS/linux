@@ -71,8 +71,10 @@ static int io_enclave_mmap_internal(
         return -ENOMEM;
     }
 
-    uintptr_t * phys_addr_array =
-        kmalloc_array(n_pages, sizeof(uintptr_t), GFP_KERNEL);
+    /* We want full pages here. CertiKOS will check that this memory is unused
+     * at the granularity of a page. */
+    uintptr_t * phys_addr_array = (void*)__get_free_pages(GFP_KERNEL,
+            get_order(n_pages*sizeof(uintptr_t)));
     if(!phys_addr_array)
     {
         printk(KERN_WARNING "phys_addr_array kmalloc failed.\n");
