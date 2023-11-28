@@ -253,6 +253,7 @@ enum io_uring_op {
 	IORING_OP_CLONE3,
 	IORING_OP_EXECVEAT,
 	IORING_OP_GETDENTS,
+	IORING_OP_LSEEK,
 
 	/* this goes last, obviously */
 	IORING_OP_LAST,

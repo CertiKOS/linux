@@ -39,6 +39,7 @@
 #include "clone.h"
 #include "exec.h"
 #include "getdents.h"
+#include "lseek.h"
 
 static int io_no_issue(struct io_kiocb *req, unsigned int issue_flags)
 {
@@ -491,6 +492,11 @@ const struct io_issue_def io_issue_defs[] = {
 		.prep			= io_getdents_prep,
 		.issue			= io_getdents,
 	},
+	[IORING_OP_LSEEK] = {
+		.needs_file		= 1,
+		.prep			= io_lseek_prep,
+		.issue			= io_lseek,
+	},
 };
 
 
@@ -743,6 +749,9 @@ const struct io_cold_def io_cold_defs[] = {
 	},
 	[IORING_OP_GETDENTS] = {
 		.name			= "EXECVEAT"
+	},
+	[IORING_OP_LSEEK] = {
+		.name			= "LSEEK"
 	},
 };
 
