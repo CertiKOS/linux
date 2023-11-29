@@ -191,7 +191,7 @@ int io_enclave_mmap(struct io_kiocb *req, unsigned int issue_flags)
     }
 
 
-    io_req_set_res(req, 0, 0);
+    io_req_set_res(req, len, 0);
     return IOU_OK;
 }
 
