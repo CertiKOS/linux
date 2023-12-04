@@ -27,15 +27,28 @@ struct io_enclave_mmap
 };
 
 
-struct io_enclave_spawn
+struct enclave_spawn_data
 {
-    struct sys_spawn_param_t *kparams;
-    struct io_uring_params * k_io_params;
     char *bin_name;
     char **argv;
     char **envp;
     char *argv_strs;
     char *envp_strs;
+
+    int kparams_order;
+    int k_io_params_order;
+    int bin_name_order;
+    int argv_order;
+    int envp_order;
+    int argv_strs_order;
+    int envp_strs_order;
+};
+
+struct io_enclave_spawn
+{
+    struct sys_spawn_param_t *kparams;
+    struct io_uring_params * k_io_params;
+    struct enclave_spawn_data *data;
 };
 
 
@@ -225,7 +238,9 @@ static int phys_array_of_user_str_array(
         size_t arr_max,
         size_t elem_max,
         char *** arr_out,
-        char ** arr_strs_out)
+        char ** arr_strs_out,
+        int * arr_out_order,
+        int * arr_strs_out_order)
 {
     size_t total;
     size_t arr_size = argv_envp_count(
@@ -234,8 +249,12 @@ static int phys_array_of_user_str_array(
             elem_max,
             &total);
 
-    char ** arr = kmalloc_array(arr_size, sizeof(char*), GFP_KERNEL);
-    char * arr_strs = kmalloc(total, GFP_KERNEL);
+    *arr_out_order = get_order(arr_size*sizeof(char*));
+    *arr_strs_out_order = get_order(total);
+
+    /* whole pages are needed here */
+    char ** arr = (void*)__get_free_pages(GFP_KERNEL, *arr_out_order);
+    char * arr_strs = (void*)__get_free_pages(GFP_KERNEL, *arr_strs_out_order);
     char * arr_strs_head = arr_strs;
 
     if(!arr || !arr_strs)
@@ -308,8 +327,18 @@ int io_enclave_spawn_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
     }
 
     enclave_spawn = io_kiocb_to_cmd(req, struct io_enclave_spawn);
-    enclave_spawn->kparams =
-        kmalloc(sizeof(*enclave_spawn->kparams), GFP_KERNEL);
+
+    enclave_spawn->data = kmalloc(sizeof(*enclave_spawn->data), GFP_KERNEL | __GFP_ZERO);
+    if(!enclave_spawn->data) {
+        ret = -ENOMEM;
+        goto out;
+    }
+
+    enclave_spawn->data->kparams_order =
+        get_order(sizeof(*enclave_spawn->kparams));
+
+    enclave_spawn->kparams = (void*)__get_free_pages(GFP_KERNEL,
+            enclave_spawn->data->kparams_order);
     if(!enclave_spawn->kparams) {
         printk("Failed to allocate memory for bin_name\n");
         ret = -ENOMEM;
@@ -325,8 +354,9 @@ int io_enclave_spawn_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 
     name_size = strnlen_user(enclave_spawn->kparams->bin_name,
             ENCLAVE_BIN_NAME_MAX_LEN);
-
-    bin_name = kmalloc(name_size, GFP_KERNEL);
+    enclave_spawn->data->bin_name_order = get_order(name_size);
+    bin_name = (void*)__get_free_pages(GFP_KERNEL,
+            enclave_spawn->data->bin_name_order);
     if(!bin_name) {
         printk("Failed to allocate memory for bin_name\n");
         ret = -ENOMEM;
@@ -344,7 +374,9 @@ int io_enclave_spawn_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
         ENCLAVE_ARGV_MAX_LEN,
         ENCLAVE_ARGV_ELEM_MAX_LEN,
         &argv,
-        &argv_strs);
+        &argv_strs,
+        &enclave_spawn->data->argv_order,
+        &enclave_spawn->data->argv_strs_order);
     if(ret < 0)
     {
         goto out2;
@@ -356,15 +388,19 @@ int io_enclave_spawn_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
         ENCLAVE_ENVP_MAX_LEN,
         ENCLAVE_ENVP_ELEM_MAX_LEN,
         &envp,
-        &envp_strs);
+        &envp_strs,
+        &enclave_spawn->data->envp_order,
+        &enclave_spawn->data->envp_strs_order);
     if(ret < 0)
     {
         goto out2;
     }
     envp_size = ret;
 
-    enclave_spawn->k_io_params =
-        kmalloc(sizeof(*enclave_spawn->k_io_params), GFP_KERNEL);
+    enclave_spawn->data->k_io_params_order =
+        get_order(sizeof(*enclave_spawn->k_io_params));
+    enclave_spawn->k_io_params = (void*)__get_free_pages(GFP_KERNEL,
+            enclave_spawn->data->k_io_params_order);
     if(!enclave_spawn->k_io_params)
     {
         printk("Failed to allocate memory for bin_name\n");
@@ -389,23 +425,24 @@ int io_enclave_spawn_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
     enclave_spawn->kparams->argv_size   = argv_size;
     enclave_spawn->kparams->envp_size   = envp_size;
 
-    enclave_spawn->bin_name = bin_name;
-    enclave_spawn->argv = argv;
-    enclave_spawn->envp = envp;
-    enclave_spawn->argv_strs = argv_strs;
-    enclave_spawn->envp_strs = envp_strs;
+    enclave_spawn->data->bin_name = bin_name;
+    enclave_spawn->data->argv = argv;
+    enclave_spawn->data->envp = envp;
+    enclave_spawn->data->argv_strs = argv_strs;
+    enclave_spawn->data->envp_strs = envp_strs;
 
     return 0;
 out3:
-    kfree(enclave_spawn->k_io_params);
+    free_pages((uintptr_t)enclave_spawn->k_io_params,   enclave_spawn->data->k_io_params_order);
 out2:
-    kfree(envp);
-    kfree(argv);
-    kfree(envp_strs);
-    kfree(argv_strs);
-    kfree(bin_name);
+    free_pages((uintptr_t)envp,                         enclave_spawn->data->envp_order);
+    free_pages((uintptr_t)argv,                         enclave_spawn->data->argv_order);
+    free_pages((uintptr_t)envp_strs,                    enclave_spawn->data->envp_strs_order);
+    free_pages((uintptr_t)argv_strs,                    enclave_spawn->data->argv_strs_order);
+    free_pages((uintptr_t)bin_name,                     enclave_spawn->data->bin_name_order);
+    free_pages((uintptr_t)enclave_spawn->kparams,       enclave_spawn->data->kparams_order);
 out1:
-    kfree(enclave_spawn->kparams);
+    kfree(enclave_spawn->data);
 out:
     return ret;
 }
@@ -432,12 +469,13 @@ int io_enclave_spawn(struct io_kiocb *req, unsigned int issue_flags)
         req_set_fail(req);
     }
 
-    //TODO free original kernel pointers
-    kfree(enclave_spawn->bin_name);
-    kfree(enclave_spawn->argv);
-    kfree(enclave_spawn->envp);
-    kfree(enclave_spawn->argv_strs);
-    kfree(enclave_spawn->envp_strs);
+    free_pages((uintptr_t)enclave_spawn->data->bin_name,   enclave_spawn->data->bin_name_order);
+    free_pages((uintptr_t)enclave_spawn->data->argv,       enclave_spawn->data->argv_order);
+    free_pages((uintptr_t)enclave_spawn->data->envp,       enclave_spawn->data->envp_order);
+    free_pages((uintptr_t)enclave_spawn->data->argv_strs,  enclave_spawn->data->argv_strs_order);
+    free_pages((uintptr_t)enclave_spawn->data->envp_strs,  enclave_spawn->data->envp_strs_order);
+    free_pages((uintptr_t)enclave_spawn->k_io_params,   enclave_spawn->data->k_io_params_order);
+    free_pages((uintptr_t)enclave_spawn->kparams,       enclave_spawn->data->kparams_order);
 
     io_req_set_res(req, 0, 0);
     return IOU_OK;

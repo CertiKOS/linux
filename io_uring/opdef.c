@@ -40,6 +40,7 @@
 #include "exec.h"
 #include "getdents.h"
 #include "lseek.h"
+#include "pipe.h"
 
 static int io_no_issue(struct io_kiocb *req, unsigned int issue_flags)
 {
@@ -497,6 +498,10 @@ const struct io_issue_def io_issue_defs[] = {
 		.prep			= io_lseek_prep,
 		.issue			= io_lseek,
 	},
+	[IORING_OP_PIPE2] = {
+		.prep			= io_pipe2_prep,
+		.issue			= io_pipe2,
+	},
 };
 
 
@@ -752,6 +757,9 @@ const struct io_cold_def io_cold_defs[] = {
 	},
 	[IORING_OP_LSEEK] = {
 		.name			= "LSEEK"
+	},
+	[IORING_OP_PIPE2] = {
+		.name			= "PIPE2"
 	},
 };
 
