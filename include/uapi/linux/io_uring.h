@@ -256,6 +256,7 @@ enum io_uring_op {
 	IORING_OP_GETDENTS,
 	IORING_OP_LSEEK,
 	IORING_OP_PIPE2,
+	IORING_OP_SYNC,
 
 	/* this goes last, obviously */
 	IORING_OP_LAST,

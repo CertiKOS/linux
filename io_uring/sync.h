@@ -8,3 +8,6 @@ int io_fsync(struct io_kiocb *req, unsigned int issue_flags);
 
 int io_fallocate(struct io_kiocb *req, unsigned int issue_flags);
 int io_fallocate_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe);
+
+int io_sync_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe);
+int io_sync(struct io_kiocb *req, unsigned int issue_flags);

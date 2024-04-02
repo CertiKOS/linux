@@ -8,6 +8,7 @@
 #include <linux/namei.h>
 #include <linux/io_uring.h>
 #include <linux/fsnotify.h>
+#include <linux/syscalls.h>
 
 #include <uapi/linux/io_uring.h>
 
@@ -110,3 +111,20 @@ int io_fallocate(struct io_kiocb *req, unsigned int issue_flags)
 	io_req_set_res(req, ret, 0);
 	return IOU_OK;
 }
+
+
+int io_sync_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
+{
+	if (unlikely(sqe->addr || sqe->buf_index || sqe->splice_fd_in))
+		return -EINVAL;
+
+	return 0;
+}
+
+int io_sync(struct io_kiocb *req, unsigned int issue_flags)
+{
+	ksys_sync();
+	io_req_set_res(req, 0, 0);
+	return IOU_OK;
+}
+

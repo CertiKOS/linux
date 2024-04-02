@@ -502,6 +502,10 @@ const struct io_issue_def io_issue_defs[] = {
 		.prep			= io_pipe2_prep,
 		.issue			= io_pipe2,
 	},
+	[IORING_OP_SYNC] = {
+		.prep			= io_sync_prep,
+		.issue			= io_sync,
+	},
 };
 
 
@@ -760,6 +764,9 @@ const struct io_cold_def io_cold_defs[] = {
 	},
 	[IORING_OP_PIPE2] = {
 		.name			= "PIPE2"
+	},
+	[IORING_OP_SYNC] = {
+		.name			= "SYNC"
 	},
 };
 
