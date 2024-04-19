@@ -15,6 +15,7 @@
 
 #include "io_uring.h"
 #include "enclave.h"
+#include "rsrc.h"
 
 struct io_enclave_mmap
 {
@@ -157,6 +158,7 @@ int io_enclave_mmap_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 }
 
 
+
 int io_enclave_mmap(struct io_kiocb *req, unsigned int issue_flags)
 {
     struct io_enclave_mmap * enclave_mmap;
@@ -203,6 +205,53 @@ int io_enclave_mmap(struct io_kiocb *req, unsigned int issue_flags)
         return IOU_OK;
     }
 
+
+    /* Register this shared memory with io_uring so we can used FIXED ops */
+    int ret;
+    if(!req->ctx->user_bufs) {
+        unsigned int nr_buffers = 64;
+
+        ret = io_sqe_buffers_register(req->ctx, NULL, nr_buffers, NULL);
+        if(ret) {
+            printk(KERN_WARNING "io_enclave: failed to register buffers %i\n", ret);
+            io_req_set_res(req, ret, 0);
+            return IOU_OK;
+        }
+    }
+
+    struct iovec __user * data = u64_to_user_ptr(uva);
+    struct io_uring_rsrc_update2 __user * up =
+        (struct io_uring_rsrc_update2 __user *)(data + 1);
+
+    struct iovec my_data = {
+        .iov_base = u64_to_user_ptr(uva),
+        .iov_len = len
+    };
+    copy_to_user(data, &my_data, sizeof(my_data));
+
+    unsigned int i;
+    for(i = 0; i < req->ctx->nr_user_bufs; i++) {
+        if(req->ctx->user_bufs[i] == req->ctx->dummy_ubuf) break;
+    }
+
+    if(i >= req->ctx->nr_user_bufs) {
+        printk(KERN_WARNING "io_enclave: fixed buffers full.\n");
+        /* TODO expand buffers */
+    }
+
+    struct io_uring_rsrc_update2 my_up = {
+        .offset = i,
+        .nr = 1,
+        .data = data,
+    };
+    copy_to_user(up, &my_up, sizeof(my_up));
+
+    ret = io_register_rsrc_update(req->ctx, up, sizeof(*up), IORING_RSRC_BUFFER);
+    if(ret != 1) {
+        printk(KERN_WARNING "io_enclave: failed to update buffers %i\n",ret);
+        io_req_set_res(req, ret, 0);
+        return IOU_OK;
+    }
 
     io_req_set_res(req, len, 0);
     return IOU_OK;
