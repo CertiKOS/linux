@@ -12,19 +12,28 @@
 
 #include <uapi/linux/io_uring.h>
 #include <uapi/certikos/spawn.h>
+#include <uapi/certikos/smccc.h>
 
 #include "io_uring.h"
 #include "enclave.h"
 #include "rsrc.h"
 
+
+struct enclave_mmap_data
+{
+    int             eid;
+    uint64_t        user_data;
+    uintptr_t *     paddrs;
+    int             paddrs_order;
+    struct page **  pages;
+    size_t          pages_size;
+};
+
 struct io_enclave_mmap
 {
     struct file * file;
     size_t size;
-    int eid;
-    uint64_t user_data;
-    uintptr_t *phys_addr_array;
-    struct page ** pages;
+    struct enclave_mmap_data *mmap_data;
 };
 
 
@@ -53,14 +62,37 @@ struct io_enclave_spawn
 };
 
 
+static void
+free_enclave_mmap_data(struct enclave_mmap_data *data)
+{
+    if(!data)
+        return;
+
+    if(data->pages)
+    {
+        for(unsigned long i = 0; i < data->pages_size; i++)
+        {
+            __free_page(data->pages[i]);
+        }
+        kfree(data->pages);
+    }
+
+    free_pages((uintptr_t)data->paddrs, data->paddrs_order);
+    kfree(data);
+}
+
+
 static int io_enclave_release(
         struct inode *inode,
         struct file *file)
 {
-    struct io_enclave_mmap * enclave_mmap = file->private_data;
-    printk(KERN_WARNING "release mmap %lu\n", enclave_mmap->size);
-    kfree(enclave_mmap->phys_addr_array);
-    kfree(enclave_mmap->pages);
+    struct enclave_mmap_data * priv = file->private_data;
+    printk(KERN_WARNING "release mmap (%zu pages)\n", priv->pages_size);
+
+    //TODO free shmem smc?
+
+    free_enclave_mmap_data(priv);
+    file->private_data = NULL;
     return 0;
 }
 
@@ -69,69 +101,81 @@ static int io_enclave_mmap_internal(
         struct vm_area_struct *vma)
 {
     int res;
-    struct io_enclave_mmap * enclave_mmap = file->private_data;
+    struct enclave_mmap_data * priv = file->private_data;
     size_t len = vma->vm_end - vma->vm_start;
-    unsigned long n_pages = len >> PAGE_SHIFT;
     vm_flags_set(vma, VM_MIXEDMAP | VM_DONTEXPAND);
 
-    //printk("vm_flags=%lx\n", vma->vm_flags);
-    //printk("vm_ops=%lx\n", (uintptr_t)(vma->vm_ops));
-
-    struct page ** page_array =
-        kmalloc_array(n_pages, sizeof(struct page *), GFP_KERNEL | __GFP_ZERO);
-    if(!page_array)
+    priv->pages_size = len >> PAGE_SHIFT;
+    priv->pages = kmalloc_array(priv->pages_size, sizeof(struct page *),
+            GFP_KERNEL | __GFP_ZERO);
+    if(!priv->pages)
     {
         printk(KERN_WARNING "page_array kmalloc failed.\n");
-        return -ENOMEM;
+        res = -ENOMEM;
+        goto out;
     }
+
 
     /* We want full pages here. CertiKOS will check that this memory is unused
      * at the granularity of a page. */
-    uintptr_t * phys_addr_array = (void*)__get_free_pages(GFP_KERNEL,
-            get_order(n_pages*sizeof(uintptr_t)));
-    if(!phys_addr_array)
+    priv->paddrs_order = get_order(priv->pages_size * sizeof(struct page *));
+    priv->paddrs = (void*)__get_free_pages(GFP_KERNEL, priv->paddrs_order);
+    if(!priv->paddrs)
     {
         printk(KERN_WARNING "phys_addr_array kmalloc failed.\n");
-        kfree(page_array);
-        return -ENOMEM;
+        res = -ENOMEM;
+        goto out_free_page_array;
     }
 
-    enclave_mmap->phys_addr_array = phys_addr_array;
-    enclave_mmap->pages = page_array;
 
     unsigned long bulk_res = alloc_pages_bulk_array(
             GFP_KERNEL_ACCOUNT | __GFP_ZERO | __GFP_NOWARN | __GFP_COMP,
-            n_pages, page_array);
-    if(bulk_res != n_pages)
+            priv->pages_size, priv->pages);
+    if(bulk_res != priv->pages_size)
     {
-        printk("bulk alloc 0x%lx/0x%lx pages\n", bulk_res, n_pages);
-        return -ENOMEM;
+        printk("Failed bulk alloc 0x%lx/0x%lx pages\n", bulk_res, priv->pages_size);
+        res = -ENOMEM;
+        goto out_free_phys_addr_array;
     }
 
 
-    res = vm_insert_pages(vma, vma->vm_start, page_array, &bulk_res);
+    res = vm_insert_pages(vma, vma->vm_start, priv->pages, &bulk_res);
     if(res || bulk_res != 0)
     {
         printk("didn't inserted %lx pages (%i)\n", bulk_res, res);
-        return -EFAULT;
+        res = -EFAULT;
+        goto out_free_phys_addr_array;
     }
 
-    for(unsigned long i = 0; i < n_pages; i++)
+    for(unsigned long i = 0; i < priv->pages_size; i++)
     {
-        //printk("page %lx -> %llx\n", (uintptr_t)page_array[i], page_to_phys(page_array[i]));
-        phys_addr_array[i] = page_to_phys(page_array[i]);
+        priv->paddrs[i] = page_to_phys(priv->pages[i]);
     }
 
     struct arm_smccc_res smc_res;
-    arm_smccc_smc(ARM_SMCCC_REG_RINGLEADER_SHMEM,
-            virt_to_phys(phys_addr_array),
+    arm_smccc_smc(
+            ARM_SMCCC_CALL_VAL(
+                ARM_SMCCC_FAST_CALL,
+                ARM_SMCCC_SMC_64,
+                ARM_SMCCC_OWNER_TRUSTED_OS,
+                CERTIKOS_SMCCC_FUNC_NUM_RINGLEADER_REG_SHMEM),
+            virt_to_phys(priv->paddrs),
             (uintptr_t)vma->vm_start,
             len,
-            enclave_mmap->eid,
-            enclave_mmap->user_data,
+            priv->eid,
+            priv->user_data,
             0, 0, &smc_res);
+    //TODO: handle error
 
-    return 0;
+goto out;
+
+
+out_free_phys_addr_array:
+    free_pages((uintptr_t)priv->paddrs, priv->paddrs_order);
+out_free_page_array:
+    kfree(priv->pages);
+out:
+    return res;
 }
 
 
@@ -148,12 +192,23 @@ int io_enclave_mmap_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 {
     struct io_enclave_mmap * enclave_mmap;
 
+    /* don't accept fixed buffers */
+    if (sqe->buf_index || sqe->rw_flags || sqe->splice_fd_in) {
+        return -EINVAL;
+    }
+
     enclave_mmap = io_kiocb_to_cmd(req, struct io_enclave_mmap);
     enclave_mmap->size = READ_ONCE(sqe->len);
-    enclave_mmap->eid = READ_ONCE(sqe->off);
-    enclave_mmap->user_data = READ_ONCE(sqe->user_data);
+    enclave_mmap->mmap_data = kmalloc(sizeof(*enclave_mmap->mmap_data), GFP_KERNEL);
+    if(!enclave_mmap->mmap_data)
+    {
+        printk(KERN_WARNING "io_enclave: failed to allocate mmap.\n");
+        return -ENOMEM;
+    }
 
-    //TODO check features
+    enclave_mmap->mmap_data->eid = READ_ONCE(sqe->off);
+    enclave_mmap->mmap_data->user_data = READ_ONCE(sqe->user_data);
+
     return 0;
 }
 
@@ -162,7 +217,7 @@ int io_enclave_mmap_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 int io_enclave_mmap(struct io_kiocb *req, unsigned int issue_flags)
 {
     struct io_enclave_mmap * enclave_mmap;
-    unsigned long uva;
+    u64 uva;
 
     enclave_mmap = io_kiocb_to_cmd(req, struct io_enclave_mmap);
     size_t len = PAGE_ALIGN(enclave_mmap->size);
@@ -174,11 +229,11 @@ int io_enclave_mmap(struct io_kiocb *req, unsigned int issue_flags)
         return IOU_OK;
     }
 
-    //TODO allocate enclave_mmap
-    struct file * file = anon_inode_getfile_secure(
+
+    struct file *file = anon_inode_getfile_secure(
         "[io_enclave_shmem]",
         &io_enclave_fops,
-        enclave_mmap,
+        enclave_mmap->mmap_data,
         O_RDWR | O_CLOEXEC,
         NULL);
 
@@ -202,6 +257,7 @@ int io_enclave_mmap(struct io_kiocb *req, unsigned int issue_flags)
     {
         printk(KERN_WARNING "io_enclave: mmap of shmem failed\n");
         io_req_set_res(req, -1, 0);
+        fput(file);
         return IOU_OK;
     }
 
@@ -215,6 +271,7 @@ int io_enclave_mmap(struct io_kiocb *req, unsigned int issue_flags)
         if(ret) {
             printk(KERN_WARNING "io_enclave: failed to register buffers %i\n", ret);
             io_req_set_res(req, ret, 0);
+            fput(file);
             return IOU_OK;
         }
     }
@@ -227,7 +284,13 @@ int io_enclave_mmap(struct io_kiocb *req, unsigned int issue_flags)
         .iov_base = u64_to_user_ptr(uva),
         .iov_len = len
     };
-    copy_to_user(data, &my_data, sizeof(my_data));
+    if(copy_to_user(data, &my_data, sizeof(my_data)))
+    {
+        printk(KERN_WARNING "io_enclave: failed to copy data\n");
+        io_req_set_res(req, -1, 0);
+        fput(file);
+        return IOU_OK;
+    }
 
     unsigned int i;
     for(i = 0; i < req->ctx->nr_user_bufs; i++) {
@@ -242,16 +305,34 @@ int io_enclave_mmap(struct io_kiocb *req, unsigned int issue_flags)
     struct io_uring_rsrc_update2 my_up = {
         .offset = i,
         .nr = 1,
-        .data = data,
+        .data = uva,
     };
-    copy_to_user(up, &my_up, sizeof(my_up));
+    if(copy_to_user(up, &my_up, sizeof(my_up)))
+    {
+        printk(KERN_WARNING "io_enclave: failed to copy up\n");
+        io_req_set_res(req, -1, 0);
+        fput(file);
+        return IOU_OK;
+    }
 
     ret = io_register_rsrc_update(req->ctx, up, sizeof(*up), IORING_RSRC_BUFFER);
     if(ret != 1) {
         printk(KERN_WARNING "io_enclave: failed to update buffers %i\n",ret);
         io_req_set_res(req, ret, 0);
+        fput(file);
         return IOU_OK;
     }
+
+    int fd = get_unused_fd_flags(O_RDWR | O_CLOEXEC);
+    if(fd < 0)
+    {
+        printk(KERN_WARNING "io_enclave: failed to get fd\n");
+        io_req_set_res(req, -1, 0);
+        fput(file);
+        return IOU_OK;
+    }
+
+    fd_install(fd, file);
 
     io_req_set_res(req, len, 0);
     return IOU_OK;
@@ -503,7 +584,12 @@ int io_enclave_spawn(struct io_kiocb *req, unsigned int issue_flags)
     enclave_spawn = io_kiocb_to_cmd(req, struct io_enclave_spawn);
 
     struct arm_smccc_res res;
-    arm_smccc_smc(ARM_SMCCC_SPAWN_ENCLAVE,
+    arm_smccc_smc(
+        ARM_SMCCC_CALL_VAL(
+            ARM_SMCCC_FAST_CALL,
+            ARM_SMCCC_SMC_64,
+            ARM_SMCCC_OWNER_TRUSTED_OS,
+            CERTIKOS_SMCCC_FUNC_NUM_SPAWN_ENCLAVE),
         (uintptr_t)virt_to_phys(enclave_spawn->kparams),
         (uintptr_t)virt_to_phys(req->ctx->rings),
         (uintptr_t)virt_to_phys(req->ctx->sq_sqes),

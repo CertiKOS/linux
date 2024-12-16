@@ -73,7 +73,10 @@
 #include <linux/audit.h>
 #include <linux/security.h>
 #include <asm/shmparam.h>
+
+/* For RingLeader/CertiKOS */
 #include <linux/arm-smccc.h>
+#include <uapi/certikos/smccc.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/io_uring.h>
@@ -3987,11 +3990,16 @@ static __cold int io_uring_create(unsigned entries, struct io_uring_params *p,
 
     /* CertiKOS + IO_URING */
     if(ctx->flags & IORING_SETUP_ENCLAVE) {
-        /* TODO arm_smccc_hvc() */
         size = rings_size(ctx, p->sq_entries, p->cq_entries, &sq_array_offset);
+
+        //TODO: this could potentially allocate non-contiguous memory
         p_el3 = kmalloc(sizeof(*p_el3), GFP_KERNEL);
         memcpy(p_el3, p, sizeof(*p_el3));
-        arm_smccc_smc(ARM_SMCCC_REG_RINGLEADER_IO_URING,
+        arm_smccc_smc(
+                ARM_SMCCC_CALL_VAL(ARM_SMCCC_FAST_CALL,
+                    ARM_SMCCC_SMC_64,
+                    ARM_SMCCC_OWNER_TRUSTED_OS,
+                    CERTIKOS_SMCCC_FUNC_NUM_RINGLEADER_REG_IO_URING),
                 (uintptr_t)virt_to_phys(ctx->rings),
                 (uintptr_t)virt_to_phys(ctx->sq_sqes),
                 (uintptr_t)virt_to_phys(p_el3),
