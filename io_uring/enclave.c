@@ -89,7 +89,8 @@ static int io_enclave_release(
     struct enclave_mmap_data * priv = file->private_data;
     printk(KERN_WARNING "release mmap (%zu pages)\n", priv->pages_size);
 
-    //TODO free shmem smc?
+    //TODO these should be freed by the enclave
+    //We need to create an interface to allow the CertiKOS to free these
 
     free_enclave_mmap_data(priv);
     file->private_data = NULL;
@@ -118,7 +119,7 @@ static int io_enclave_mmap_internal(
 
     /* We want full pages here. CertiKOS will check that this memory is unused
      * at the granularity of a page. */
-    priv->paddrs_order = get_order(priv->pages_size * sizeof(struct page *));
+    priv->paddrs_order = get_order(priv->pages_size * sizeof(uintptr_t));
     priv->paddrs = (void*)__get_free_pages(GFP_KERNEL, priv->paddrs_order);
     if(!priv->paddrs)
     {
@@ -129,7 +130,7 @@ static int io_enclave_mmap_internal(
 
 
     unsigned long bulk_res = alloc_pages_bulk_array(
-            GFP_KERNEL_ACCOUNT | __GFP_ZERO | __GFP_NOWARN | __GFP_COMP,
+            GFP_KERNEL_ACCOUNT | __GFP_ZERO | __GFP_NOWARN,
             priv->pages_size, priv->pages);
     if(bulk_res != priv->pages_size)
     {
@@ -245,6 +246,7 @@ int io_enclave_mmap(struct io_kiocb *req, unsigned int issue_flags)
     }
 
 
+    //TODO current->mm lock ok?
     unsigned long populate = 0;
     uva = do_mmap(file, 0, len,
         PROT_READ | PROT_WRITE,
