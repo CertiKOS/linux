@@ -87,7 +87,7 @@ static int io_enclave_release(
         struct file *file)
 {
     struct enclave_mmap_data * priv = file->private_data;
-    printk(KERN_WARNING "release mmap (%zu pages)\n", priv->pages_size);
+    //printk(KERN_WARNING "release mmap (%zu pages)\n", priv->pages_size);
 
     //TODO these should be freed by the enclave
     //We need to create an interface to allow the CertiKOS to free these
