@@ -41,6 +41,7 @@
 #include "getdents.h"
 #include "lseek.h"
 #include "pipe.h"
+#include "chdir.h"
 
 static int io_no_issue(struct io_kiocb *req, unsigned int issue_flags)
 {
@@ -506,6 +507,10 @@ const struct io_issue_def io_issue_defs[] = {
 		.prep			= io_sync_prep,
 		.issue			= io_sync,
 	},
+	[IORING_OP_CHDIR] = {
+		.prep			= io_chdir_prep,
+		.issue			= io_chdir,
+	},
 };
 
 
@@ -767,6 +772,9 @@ const struct io_cold_def io_cold_defs[] = {
 	},
 	[IORING_OP_SYNC] = {
 		.name			= "SYNC"
+	},
+	[IORING_OP_CHDIR] = {
+		.name			= "CHDIR"
 	},
 };
 
