@@ -278,51 +278,50 @@ int io_enclave_mmap(struct io_kiocb *req, unsigned int issue_flags)
         }
     }
 
-    struct iovec __user * data = u64_to_user_ptr(uva);
-    struct io_uring_rsrc_update2 __user * up =
-        (struct io_uring_rsrc_update2 __user *)(data + 1);
-
-    struct iovec my_data = {
-        .iov_base = u64_to_user_ptr(uva),
-        .iov_len = len
-    };
-    if(copy_to_user(data, &my_data, sizeof(my_data)))
-    {
-        printk(KERN_WARNING "io_enclave: failed to copy data\n");
-        io_req_set_res(req, -1, 0);
-        fput(file);
-        return IOU_OK;
-    }
-
     unsigned int i;
-    for(i = 0; i < req->ctx->nr_user_bufs; i++) {
+    for(i = 0; i < req->ctx->nr_user_bufs; i++)
+    {
         if(req->ctx->user_bufs[i] == req->ctx->dummy_ubuf) break;
     }
 
-    if(i >= req->ctx->nr_user_bufs) {
-        printk(KERN_WARNING "io_enclave: fixed buffers full.\n");
-        /* TODO expand buffers */
-    }
-
-    struct io_uring_rsrc_update2 my_up = {
-        .offset = i,
-        .nr = 1,
-        .data = uva,
-    };
-    if(copy_to_user(up, &my_up, sizeof(my_up)))
+    if(i < req->ctx->nr_user_bufs)
     {
-        printk(KERN_WARNING "io_enclave: failed to copy up\n");
-        io_req_set_res(req, -1, 0);
-        fput(file);
-        return IOU_OK;
-    }
+        struct iovec __user * data = u64_to_user_ptr(uva);
+        struct io_uring_rsrc_update2 __user * up =
+            (struct io_uring_rsrc_update2 __user *)(data + 1);
 
-    ret = io_register_rsrc_update(req->ctx, up, sizeof(*up), IORING_RSRC_BUFFER);
-    if(ret != 1) {
-        printk(KERN_WARNING "io_enclave: failed to update buffers %i\n",ret);
-        io_req_set_res(req, ret, 0);
-        fput(file);
-        return IOU_OK;
+        struct iovec my_data = {
+            .iov_base = u64_to_user_ptr(uva),
+            .iov_len = len
+        };
+        if(copy_to_user(data, &my_data, sizeof(my_data)))
+        {
+            printk(KERN_WARNING "io_enclave: failed to copy data\n");
+            io_req_set_res(req, -1, 0);
+            fput(file);
+            return IOU_OK;
+        }
+
+        struct io_uring_rsrc_update2 my_up = {
+            .offset = i,
+            .nr = 1,
+            .data = uva,
+        };
+        if(copy_to_user(up, &my_up, sizeof(my_up)))
+        {
+            printk(KERN_WARNING "io_enclave: failed to copy up\n");
+            io_req_set_res(req, -1, 0);
+            fput(file);
+            return IOU_OK;
+        }
+
+        ret = io_register_rsrc_update(req->ctx, up, sizeof(*up), IORING_RSRC_BUFFER);
+        if(ret != 1) {
+            printk(KERN_WARNING "io_enclave: failed to update buffers %i\n",ret);
+            io_req_set_res(req, ret, 0);
+            fput(file);
+            return IOU_OK;
+        }
     }
 
     int fd = get_unused_fd_flags(O_RDWR | O_CLOEXEC);
