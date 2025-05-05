@@ -1,0 +1,3 @@
+
+int io_copy_file_range_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe);
+int io_copy_file_range(struct io_kiocb *req, unsigned int issue_flags);

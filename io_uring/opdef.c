@@ -42,6 +42,7 @@
 #include "lseek.h"
 #include "pipe.h"
 #include "chdir.h"
+#include "copy_file_range.h"
 
 static int io_no_issue(struct io_kiocb *req, unsigned int issue_flags)
 {
@@ -511,6 +512,11 @@ const struct io_issue_def io_issue_defs[] = {
 		.prep			= io_chdir_prep,
 		.issue			= io_chdir,
 	},
+	[IORING_OP_COPY_FILE_RANGE] = {
+		.needs_file		= 1,
+		.prep			= io_copy_file_range_prep,
+		.issue			= io_copy_file_range,
+	},
 };
 
 
@@ -775,6 +781,9 @@ const struct io_cold_def io_cold_defs[] = {
 	},
 	[IORING_OP_CHDIR] = {
 		.name			= "CHDIR"
+	},
+	[IORING_OP_COPY_FILE_RANGE] = {
+		.name			= "COPY_FILE_RANGE",
 	},
 };
 

@@ -67,6 +67,7 @@ struct io_uring_sqe {
 		__u32		execveat_flags;
 		__u32		pipe_flags;
 		__u32		uring_cmd_flags;
+		__u32		copy_file_range_flags;
 	};
 	__u64	user_data;	/* data to be passed back at completion time */
 	/* pack this to avoid bogus arm OABI complaints */
@@ -258,6 +259,7 @@ enum io_uring_op {
 	IORING_OP_PIPE2,
 	IORING_OP_SYNC,
 	IORING_OP_CHDIR,
+	IORING_OP_COPY_FILE_RANGE,
 
 	/* this goes last, obviously */
 	IORING_OP_LAST,

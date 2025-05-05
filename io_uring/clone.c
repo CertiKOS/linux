@@ -39,27 +39,27 @@ int io_clone3_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 
 int io_clone3(struct io_kiocb *req, unsigned int issue_flags)
 {
-	int ret;
-	struct io_clone *clone_data = io_kiocb_to_cmd(req, struct io_clone);
-	struct io_ring_ctx *ctx = req->ctx;
-	struct io_submit_link *link = &ctx->submit_state.link;
-	struct task_struct *child_task;
-
-
-
-	ret = kernel_clone(clone_data->kargs);
-	if(ret < 0)
-		goto out;
-
-	child_task = pid_task(find_vpid(ret), PIDTYPE_PID);
-
-
-
-out:
-	if (ret < 0)
-		req_set_fail(req);
-
-	io_req_set_res(req, ret, 0);
+//	int ret;
+//	struct io_clone *clone_data = io_kiocb_to_cmd(req, struct io_clone);
+//	struct io_ring_ctx *ctx = req->ctx;
+//	struct io_submit_link *link = &ctx->submit_state.link;
+//	struct task_struct *child_task;
+//
+//
+//
+//	ret = kernel_clone(clone_data->kargs);
+//	if(ret < 0)
+//		goto out;
+//
+//	child_task = pid_task(find_vpid(ret), PIDTYPE_PID);
+//
+//
+//
+//out:
+//	if (ret < 0)
+//		req_set_fail(req);
+//
+//	io_req_set_res(req, ret, 0);
 	return IOU_OK;
 }
 
