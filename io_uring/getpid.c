@@ -53,3 +53,87 @@ int io_getppid(struct io_kiocb *req, unsigned int issue_flags)
 
 	return IOU_OK;
 }
+
+int io_getuid_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
+{
+	/* put len in addr2, don't accept fixed buffers */
+	if (sqe->off || sqe->buf_index || sqe->rw_flags || sqe->splice_fd_in)
+		return -EINVAL;
+
+	return 0;
+}
+
+int io_getuid(struct io_kiocb *req, unsigned int issue_flags)
+{
+	int ret = from_kuid_munged(current_user_ns(), current_uid());
+
+	if (ret < 0)
+		req_set_fail(req);
+
+	io_req_set_res(req, ret, 0);
+
+	return IOU_OK;
+}
+
+int io_geteuid_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
+{
+	/* put len in addr2, don't accept fixed buffers */
+	if (sqe->off || sqe->buf_index || sqe->rw_flags || sqe->splice_fd_in)
+		return -EINVAL;
+
+	return 0;
+}
+
+int io_geteuid(struct io_kiocb *req, unsigned int issue_flags)
+{
+	int ret = from_kuid_munged(current_user_ns(), current_euid());
+
+	if (ret < 0)
+		req_set_fail(req);
+
+	io_req_set_res(req, ret, 0);
+
+	return IOU_OK;
+}
+
+int io_getgid_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
+{
+	/* put len in addr2, don't accept fixed buffers */
+	if (sqe->off || sqe->buf_index || sqe->rw_flags || sqe->splice_fd_in)
+		return -EINVAL;
+
+	return 0;
+}
+
+int io_getgid(struct io_kiocb *req, unsigned int issue_flags)
+{
+	int ret = from_kgid_munged(current_user_ns(), current_gid());
+
+	if (ret < 0)
+		req_set_fail(req);
+
+	io_req_set_res(req, ret, 0);
+
+	return IOU_OK;
+}
+
+int io_getegid_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
+{
+	/* put len in addr2, don't accept fixed buffers */
+	if (sqe->off || sqe->buf_index || sqe->rw_flags || sqe->splice_fd_in)
+		return -EINVAL;
+
+	return 0;
+}
+
+int io_getegid(struct io_kiocb *req, unsigned int issue_flags)
+{
+	int ret = from_kgid_munged(current_user_ns(), current_egid());
+
+	if (ret < 0)
+		req_set_fail(req);
+
+	io_req_set_res(req, ret, 0);
+
+	return IOU_OK;
+}

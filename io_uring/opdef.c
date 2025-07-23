@@ -482,6 +482,22 @@ const struct io_issue_def io_issue_defs[] = {
 		.prep			= io_getppid_prep,
 		.issue			= io_getppid,
 	},
+	[IORING_OP_GETUID] = {
+		.prep			= io_getuid_prep,
+		.issue			= io_getuid,
+	},
+	[IORING_OP_GETEUID] = {
+		.prep			= io_geteuid_prep,
+		.issue			= io_geteuid,
+	},
+	[IORING_OP_GETGID] = {
+		.prep			= io_getgid_prep,
+		.issue			= io_getgid,
+	},
+	[IORING_OP_GETEGID] = {
+		.prep			= io_getegid_prep,
+		.issue			= io_getegid,
+	},
 	[IORING_OP_CLONE3] = {
 		.prep			= io_clone3_prep,
 		.issue			= io_clone3,
