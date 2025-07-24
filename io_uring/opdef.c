@@ -498,6 +498,10 @@ const struct io_issue_def io_issue_defs[] = {
 		.prep			= io_getegid_prep,
 		.issue			= io_getegid,
 	},
+	[IORING_OP_GETPGID] = {
+		.prep			= io_getpgid_prep,
+		.issue			= io_getpgid,
+	},
 	[IORING_OP_CLONE3] = {
 		.prep			= io_clone3_prep,
 		.issue			= io_clone3,
@@ -532,6 +536,14 @@ const struct io_issue_def io_issue_defs[] = {
 		.needs_file		= 1,
 		.prep			= io_copy_file_range_prep,
 		.issue			= io_copy_file_range,
+	},
+	[IORING_OP_GETGROUPS] = {
+		.prep			= io_getgroups_prep,
+		.issue			= io_getgroups,
+	},
+	[IORING_OP_SETGROUPS] = {
+		.prep			= io_setgroups_prep,
+		.issue			= io_setgroups,
 	},
 };
 
@@ -776,6 +788,27 @@ const struct io_cold_def io_cold_defs[] = {
 	},
 	[IORING_OP_GETPID] = {
 		.name			= "GETPID",
+	},
+	[IORING_OP_GETUID] = {
+		.name			= "GETUID",
+	},
+	[IORING_OP_GETEUID] = {
+		.name			= "GETEUID",
+	},
+	[IORING_OP_GETGID] = {
+		.name			= "GETGID",
+	},
+	[IORING_OP_GETEGID] = {
+		.name			= "GETEGID",
+	},
+	[IORING_OP_GETPGID] = {
+		.name			= "GETPGID",
+	},
+	[IORING_OP_GETGROUPS] = {
+		.name			= "GETGROUPS",
+	},
+	[IORING_OP_SETGROUPS] = {
+		.name			= "SETGROUPS",
 	},
 	[IORING_OP_CLONE3] = {
 		.name			= "CLONE3",

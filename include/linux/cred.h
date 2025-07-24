@@ -65,6 +65,9 @@ extern int set_current_groups(struct group_info *);
 extern void set_groups(struct cred *, struct group_info *);
 extern bool may_setgroups(void);
 extern void groups_sort(struct group_info *);
+extern int kern_groups_to_user(gid_t __user *grouplist, const struct group_info *group_info);
+extern int kern_groups_from_user(struct group_info *group_info, gid_t __user *grouplist);
+extern int do_getpgid(pid_t pid);
 #else
 static inline void groups_free(struct group_info *group_info)
 {

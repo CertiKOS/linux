@@ -1141,7 +1141,7 @@ out:
 	return err;
 }
 
-static int do_getpgid(pid_t pid)
+int do_getpgid(pid_t pid)
 {
 	struct task_struct *p;
 	struct pid *grp;

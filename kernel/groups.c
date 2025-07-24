@@ -34,8 +34,8 @@ void groups_free(struct group_info *group_info)
 EXPORT_SYMBOL(groups_free);
 
 /* export the group_info to a user-space array */
-static int groups_to_user(gid_t __user *grouplist,
-			  const struct group_info *group_info)
+int kern_groups_to_user(gid_t __user *grouplist,
+			const struct group_info *group_info)
 {
 	struct user_namespace *user_ns = current_user_ns();
 	int i;
@@ -51,8 +51,8 @@ static int groups_to_user(gid_t __user *grouplist,
 }
 
 /* fill a group_info from a user-space array - it must be allocated already */
-static int groups_from_user(struct group_info *group_info,
-    gid_t __user *grouplist)
+int kern_groups_from_user(struct group_info *group_info,
+			  gid_t __user *grouplist)
 {
 	struct user_namespace *user_ns = current_user_ns();
 	int i;
@@ -173,7 +173,7 @@ SYSCALL_DEFINE2(getgroups, int, gidsetsize, gid_t __user *, grouplist)
 			i = -EINVAL;
 			goto out;
 		}
-		if (groups_to_user(grouplist, cred->group_info)) {
+		if (kern_groups_to_user(grouplist, cred->group_info)) {
 			i = -EFAULT;
 			goto out;
 		}
@@ -208,7 +208,7 @@ SYSCALL_DEFINE2(setgroups, int, gidsetsize, gid_t __user *, grouplist)
 	group_info = groups_alloc(gidsetsize);
 	if (!group_info)
 		return -ENOMEM;
-	retval = groups_from_user(group_info, grouplist);
+	retval = kern_groups_from_user(group_info, grouplist);
 	if (retval) {
 		put_group_info(group_info);
 		return retval;
