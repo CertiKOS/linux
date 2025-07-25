@@ -23,7 +23,6 @@ int io_fcntl_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 {
 	struct io_fcntl *fcntl_data = io_kiocb_to_cmd(req, struct io_fcntl);
 
-	/* put len in addr2, don't accept fixed buffers */
 	if (sqe->addr || sqe->buf_index || sqe->rw_flags || sqe->splice_fd_in)
 		return -EINVAL;
 

@@ -267,6 +267,7 @@ enum io_uring_op {
 	IORING_OP_SYNC,
 	IORING_OP_CHDIR,
 	IORING_OP_COPY_FILE_RANGE,
+	IORING_OP_DUP3,
 
 	/* this goes last, obviously */
 	IORING_OP_LAST,

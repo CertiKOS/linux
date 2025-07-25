@@ -9,5 +9,5 @@ obj-$(CONFIG_IO_URING)		+= io_uring.o xattr.o nop.o fs.o splice.o \
 					sqpoll.o fdinfo.o tctx.o poll.o \
 					cancel.o kbuf.o rsrc.o rw.o opdef.o notif.o \
 					enclave.o fcntl.o getpid.o clone.o exec.o getdents.o \
-					lseek.o pipe.o chdir.o copy_file_range.o
+					lseek.o pipe.o chdir.o copy_file_range.o dup3.o
 obj-$(CONFIG_IO_WQ)		+= io-wq.o

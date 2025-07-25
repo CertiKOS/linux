@@ -1211,7 +1211,7 @@ int receive_fd(struct file *file, unsigned int o_flags)
 }
 EXPORT_SYMBOL_GPL(receive_fd);
 
-static int ksys_dup3(unsigned int oldfd, unsigned int newfd, int flags)
+int ksys_dup3(unsigned int oldfd, unsigned int newfd, int flags)
 {
 	int err = -EBADF;
 	struct file *file;

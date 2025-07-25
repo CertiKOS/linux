@@ -43,6 +43,7 @@
 #include "pipe.h"
 #include "chdir.h"
 #include "copy_file_range.h"
+#include "dup3.h"
 
 static int io_no_issue(struct io_kiocb *req, unsigned int issue_flags)
 {
@@ -502,6 +503,14 @@ const struct io_issue_def io_issue_defs[] = {
 		.prep			= io_getpgid_prep,
 		.issue			= io_getpgid,
 	},
+	[IORING_OP_GETGROUPS] = {
+		.prep			= io_getgroups_prep,
+		.issue			= io_getgroups,
+	},
+	[IORING_OP_SETGROUPS] = {
+		.prep			= io_setgroups_prep,
+		.issue			= io_setgroups,
+	},
 	[IORING_OP_CLONE3] = {
 		.prep			= io_clone3_prep,
 		.issue			= io_clone3,
@@ -537,13 +546,9 @@ const struct io_issue_def io_issue_defs[] = {
 		.prep			= io_copy_file_range_prep,
 		.issue			= io_copy_file_range,
 	},
-	[IORING_OP_GETGROUPS] = {
-		.prep			= io_getgroups_prep,
-		.issue			= io_getgroups,
-	},
-	[IORING_OP_SETGROUPS] = {
-		.prep			= io_setgroups_prep,
-		.issue			= io_setgroups,
+	[IORING_OP_DUP3] = {
+		.prep			= io_dup3_prep,
+		.issue			= io_dup3,
 	},
 };
 
@@ -833,6 +838,9 @@ const struct io_cold_def io_cold_defs[] = {
 	},
 	[IORING_OP_COPY_FILE_RANGE] = {
 		.name			= "COPY_FILE_RANGE",
+	},
+	[IORING_OP_DUP3] = {
+		.name			= "DUP3",
 	},
 };
 
