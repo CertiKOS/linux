@@ -381,6 +381,13 @@ static int phys_array_of_user_str_array(
     *arr_out_order = get_order(arr_size*sizeof(char*));
     *arr_strs_out_order = get_order(total);
 
+    if(*arr_out_order < 0 || *arr_strs_out_order < 0 ||
+            *arr_out_order > MAX_ORDER || *arr_strs_out_order > MAX_ORDER)
+    {
+        printk("Invalid orders for argv/envp arrays\n");
+        return -EINVAL;
+    }
+
     /* whole pages are needed here */
     char ** arr = (void*)__get_free_pages(GFP_KERNEL, *arr_out_order);
     char * arr_strs = (void*)__get_free_pages(GFP_KERNEL, *arr_strs_out_order);
