@@ -39,7 +39,6 @@ struct io_enclave_mmap
 
 struct enclave_spawn_data
 {
-    char *bin_name;
     char **argv;
     char **envp;
     char *argv_strs;
@@ -47,7 +46,6 @@ struct enclave_spawn_data
 
     int kparams_order;
     int k_io_params_order;
-    int bin_name_order;
     int argv_order;
     int envp_order;
     int argv_strs_order;
@@ -56,7 +54,7 @@ struct enclave_spawn_data
 
 struct io_enclave_spawn
 {
-    struct sys_spawn_param_t *kparams;
+    struct partee_spawn_params *kparams;
     struct io_uring_params * k_io_params;
     struct enclave_spawn_data *data;
 };
@@ -441,13 +439,12 @@ int io_enclave_spawn_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 {
     int ret = 0;
     struct io_enclave_spawn * enclave_spawn;
-    size_t name_size, argv_size, envp_size;
-    char * bin_name = NULL;
+    size_t argv_size, envp_size;
     char **argv = NULL;
     char **envp = NULL;
     char *argv_strs = NULL;
     char *envp_strs = NULL;
-    struct sys_spawn_param_t __user *p;
+    struct partee_spawn_params __user *p;
     struct io_uring_params __user * io_params = (void *)READ_ONCE(sqe->addr2);
 
     /* put len in addr2, don't accept fixed buffers */
@@ -478,27 +475,11 @@ int io_enclave_spawn_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 
     p = (void *)READ_ONCE(sqe->addr);
     if(copy_from_user(enclave_spawn->kparams, p, sizeof(*p))) {
-        printk("Failed to allocate memory for bin_name\n");
+        printk("Failed to copy spawn params\n");
         ret = -EFAULT;
         goto out1;
     }
-
-    name_size = strnlen_user(enclave_spawn->kparams->bin_name,
-            ENCLAVE_BIN_NAME_MAX_LEN);
-    enclave_spawn->data->bin_name_order = get_order(name_size);
-    bin_name = (void*)__get_free_pages(GFP_KERNEL,
-            enclave_spawn->data->bin_name_order);
-    if(!bin_name) {
-        printk("Failed to allocate memory for bin_name\n");
-        ret = -ENOMEM;
-        goto out1;
-    }
-
-    if(copy_from_user(bin_name, enclave_spawn->kparams->bin_name, name_size))
-    {
-        ret = -EFAULT;
-        goto out2;
-    }
+    enclave_spawn->kparams->path[PARTEE_NAME_MAX_LEN - 1] = '\0';
 
     ret = phys_array_of_user_str_array(
         (const char __user * const __user *)enclave_spawn->kparams->argv,
@@ -550,13 +531,11 @@ int io_enclave_spawn_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
     //        bin_name, name_size, argv_size, envp_size);
 
 
-    enclave_spawn->kparams->bin_name    = (void *)virt_to_phys(bin_name);
     enclave_spawn->kparams->argv        = (void *)virt_to_phys(argv);
     enclave_spawn->kparams->envp        = (void *)virt_to_phys(envp);
     enclave_spawn->kparams->argv_size   = argv_size;
     enclave_spawn->kparams->envp_size   = envp_size;
 
-    enclave_spawn->data->bin_name = bin_name;
     enclave_spawn->data->argv = argv;
     enclave_spawn->data->envp = envp;
     enclave_spawn->data->argv_strs = argv_strs;
@@ -570,7 +549,6 @@ out2:
     free_pages((uintptr_t)argv,                         enclave_spawn->data->argv_order);
     free_pages((uintptr_t)envp_strs,                    enclave_spawn->data->envp_strs_order);
     free_pages((uintptr_t)argv_strs,                    enclave_spawn->data->argv_strs_order);
-    free_pages((uintptr_t)bin_name,                     enclave_spawn->data->bin_name_order);
     free_pages((uintptr_t)enclave_spawn->kparams,       enclave_spawn->data->kparams_order);
 out1:
     kfree(enclave_spawn->data);
@@ -605,7 +583,6 @@ int io_enclave_spawn(struct io_kiocb *req, unsigned int issue_flags)
         req_set_fail(req);
     }
 
-    free_pages((uintptr_t)enclave_spawn->data->bin_name,   enclave_spawn->data->bin_name_order);
     free_pages((uintptr_t)enclave_spawn->data->argv,       enclave_spawn->data->argv_order);
     free_pages((uintptr_t)enclave_spawn->data->envp,       enclave_spawn->data->envp_order);
     free_pages((uintptr_t)enclave_spawn->data->argv_strs,  enclave_spawn->data->argv_strs_order);
