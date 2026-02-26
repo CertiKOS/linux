@@ -371,6 +371,11 @@ static int phys_array_of_user_str_array(
         int * arr_out_order,
         int * arr_strs_out_order)
 {
+    *arr_out = NULL;
+    *arr_strs_out = NULL;
+    *arr_out_order = 0;
+    *arr_strs_out_order = 0;
+
     size_t total;
     size_t arr_size = argv_envp_count(
             (const char __user * const __user*)uarr,
@@ -378,32 +383,45 @@ static int phys_array_of_user_str_array(
             elem_max,
             &total);
 
+    if(total == 0 || arr_size == 0)
+    {
+        return 0;
+    }
+
     *arr_out_order = get_order(arr_size*sizeof(char*));
     *arr_strs_out_order = get_order(total);
 
     if(*arr_out_order < 0 || *arr_strs_out_order < 0 ||
             *arr_out_order > MAX_ORDER || *arr_strs_out_order > MAX_ORDER)
     {
-        printk("Invalid orders for argv/envp arrays\n");
+        printk("Invalid orders for argv/envp arrays. # strs=%zu, bytes=%zu\n",
+                arr_size, total);
         return -EINVAL;
     }
 
     /* whole pages are needed here */
     char ** arr = (void*)__get_free_pages(GFP_KERNEL, *arr_out_order);
-    char * arr_strs = (void*)__get_free_pages(GFP_KERNEL, *arr_strs_out_order);
-    char * arr_strs_head = arr_strs;
-
-    if(!arr || !arr_strs)
+    if(!arr)
     {
         printk("Failed to kmalloc space for argv/envp\n");
         return -ENOMEM;
     }
 
+    char * arr_strs = (void*)__get_free_pages(GFP_KERNEL, *arr_strs_out_order);
+    if(!arr_strs)
+    {
+        printk("Failed to kmalloc space for argv/envp\n");
+        free_pages((uintptr_t)arr, *arr_out_order);
+        return -ENOMEM;
+    }
+
+    char * arr_strs_head = arr_strs;
+
     if(copy_from_user(arr, uarr, arr_size * sizeof(char*)))
     {
         printk("Failed to copy argv/envp from user\n");
-        kfree(arr);
-        kfree(arr_strs);
+        free_pages((uintptr_t)arr, *arr_out_order);
+        free_pages((uintptr_t)arr_strs, *arr_strs_out_order);
         return -EFAULT;
     }
 
@@ -414,11 +432,19 @@ static int phys_array_of_user_str_array(
 
         size_t sz = strnlen_user(arr[i], elem_max);
 
+        if(sz == 0)
+        {
+            printk("Invalid string in argv/envp\n");
+            free_pages((uintptr_t)arr, *arr_out_order);
+            free_pages((uintptr_t)arr_strs, *arr_strs_out_order);
+            return -EFAULT;
+        }
+
         if((uintptr_t)arr_strs_head - (uintptr_t)arr_strs + sz > total)
         {
             printk("Overflow of argv/envp strs\n");
-            kfree(arr);
-            kfree(arr_strs);
+            free_pages((uintptr_t)arr, *arr_out_order);
+            free_pages((uintptr_t)arr_strs, *arr_strs_out_order);
             return -EFAULT;
         }
 
@@ -426,11 +452,12 @@ static int phys_array_of_user_str_array(
         if(copied + 1 != sz)
         {
             printk("strncopy fault %lx != %lx\n", copied + 1, sz);
-            kfree(arr);
-            kfree(arr_strs);
+            free_pages((uintptr_t)arr, *arr_out_order);
+            free_pages((uintptr_t)arr_strs, *arr_strs_out_order);
             return -EFAULT;
         }
         arr_strs_head[copied] = '\0';
+
 
         arr[i] = (void*)virt_to_phys(arr_strs_head);
         arr_strs_head += sz;
@@ -538,8 +565,9 @@ int io_enclave_spawn_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
     //        bin_name, name_size, argv_size, envp_size);
 
 
-    enclave_spawn->kparams->argv        = (void *)virt_to_phys(argv);
-    enclave_spawn->kparams->envp        = (void *)virt_to_phys(envp);
+
+    enclave_spawn->kparams->argv        = (argv_size > 0) ? (void *)virt_to_phys(argv) : NULL;
+    enclave_spawn->kparams->envp        = (envp_size > 0) ? (void *)virt_to_phys(envp) : NULL;
     enclave_spawn->kparams->argv_size   = argv_size;
     enclave_spawn->kparams->envp_size   = envp_size;
 
